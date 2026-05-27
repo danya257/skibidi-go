@@ -38,7 +38,8 @@
     <div id="hud-bottom">
       <button class="nav-btn" onclick="centerOnPlayer()"><div class="ico">📍</div><div>Я</div></button>
       <button class="nav-btn" onclick="showScreen('collection-screen'); renderCollection()"><div class="ico">📒</div><div>Декс</div></button>
-      <button class="nav-btn" onclick="showScreen('team-screen'); renderTeamScreen()"><div class="ico">⚔️</div><div>Команда</div></button>
+      <button class="nav-btn shop" onclick="showScreen('shop-screen'); renderShop()"><div class="ico">🛒</div><div>Магаз</div></button>
+      <button class="nav-btn" onclick="showScreen('team-screen'); renderTeamScreen()"><div class="ico">⚔️</div><div>Отряд</div></button>
       <button class="nav-btn danger" onclick="startTrainerBattle()"><div class="ico">🥊</div><div>Бой</div></button>
     </div>
   </div>
@@ -71,6 +72,20 @@
       <button class="back-btn" onclick="showScreen('map-screen')">← Назад</button>
     </div>
     <div id="collection-grid" class="collection-grid"></div>
+  </div>
+
+  <!-- SHOP -->
+  <div id="shop-screen" class="screen">
+    <div class="screen-header">
+      <div class="screen-title">🛒 Магазин</div>
+      <button class="back-btn" onclick="showScreen('map-screen')">← Назад</button>
+    </div>
+    <div class="shop-balance">
+      💰 <span id="shop-coins">0</span>
+    </div>
+    <div id="shop-grid" class="shop-grid"></div>
+    <div class="shop-section-title">🏆 Достижения</div>
+    <div id="ach-grid" class="ach-grid"></div>
   </div>
 
   <!-- TEAM -->
@@ -115,6 +130,8 @@
 </div>
 
 <div id="toast"></div>
+<div id="ach-popup-stack"></div>
+<div id="fly-coin-layer"></div>
 
 <div id="modal-overlay">
   <div class="modal">

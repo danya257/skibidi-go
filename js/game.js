@@ -6,6 +6,7 @@ import {
   initBattleScene, setBattleFighters, performAttack, getFighterScreenPos,
 } from './scenes.js';
 import { MOVE_COLORS } from './effects.js';
+import { ACHIEVEMENTS, checkAchievements, SHOP_ITEMS, powerUpCost, canPowerUp, powerUp } from './progression.js';
 
 function spawnDamageNumber(dmg, side, isCrit) {
   setTimeout(() => {
@@ -75,6 +76,7 @@ const rarityStars = r => '★'.repeat(r) + '☆'.repeat(5 - r);
 const DEFAULT_STATE = {
   player: { name: 'Игрок', level: 1, xp: 0, coins: 0, balls: 10 },
   collection: [], team: [], lastSpawn: 0, spawns: [], playerPos: null,
+  achievements: [], stats: { wins: 0, crits: 0, catches: 0 }, modifiers: {},
 };
 let state = loadState();
 
@@ -90,13 +92,16 @@ function saveState() { try { localStorage.setItem('skibidi-go', JSON.stringify(s
 const xpForLevel = lvl => 80 + lvl * 40;
 function addXP(amount) {
   state.player.xp += amount;
+  let leveled = false;
   while (state.player.xp >= xpForLevel(state.player.level)) {
     state.player.xp -= xpForLevel(state.player.level);
     state.player.level++;
     state.player.balls += 5;
     toast(`🎉 Уровень ${state.player.level}! +5 🧹`);
+    leveled = true;
   }
   refreshHUD(); saveState();
+  if (leveled) triggerAchievementCheck({ type: 'levelup' });
 }
 
 function refreshHUD() {
@@ -126,6 +131,100 @@ function showModal({ thumb = null, title = '', text = '', stats = null }) {
   document.getElementById('modal-overlay').classList.add('show');
 }
 function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); }
+
+/* ============== ACHIEVEMENTS & INTERACTIONS ============== */
+function triggerAchievementCheck(event) {
+  const newOnes = checkAchievements(state, event);
+  for (const ach of newOnes) {
+    if (ach.reward.coins) state.player.coins += ach.reward.coins;
+    if (ach.reward.balls) state.player.balls += ach.reward.balls;
+    showAchPopup(ach);
+  }
+  if (newOnes.length) { saveState(); refreshHUD(); }
+}
+
+function showAchPopup(ach) {
+  const stack = document.getElementById('ach-popup-stack');
+  const div = document.createElement('div');
+  div.className = 'ach-popup';
+  const rewardText = [
+    ach.reward.coins ? `+${ach.reward.coins} 💰` : '',
+    ach.reward.balls ? `+${ach.reward.balls} 🧹` : '',
+  ].filter(Boolean).join(' · ');
+  div.innerHTML = `
+    <div class="pop-icon">${ach.icon}</div>
+    <div class="pop-text">
+      <div class="pop-label">ДОСТИЖЕНИЕ</div>
+      <div class="pop-name">${ach.name}</div>
+      <div class="pop-reward">${rewardText}</div>
+    </div>`;
+  stack.appendChild(div);
+  setTimeout(() => div.classList.add('fade'), 3600);
+  setTimeout(() => div.remove(), 4100);
+}
+
+function flyCoinTo(fromX, fromY, kind = 'coin') {
+  const hud = document.querySelector(kind === 'xp' ? '#hud-level' : '.hud-pill.green');
+  if (!hud) return;
+  const rect = hud.getBoundingClientRect();
+  const toX = rect.left + rect.width / 2;
+  const toY = rect.top + rect.height / 2;
+  const layer = document.getElementById('fly-coin-layer');
+  for (let i = 0; i < 6; i++) {
+    const el = document.createElement('div');
+    el.className = kind === 'xp' ? 'fly-coin fly-xp' : 'fly-coin';
+    el.textContent = kind === 'xp' ? '+XP' : '💰';
+    const spreadX = (Math.random() - 0.5) * 80;
+    const spreadY = (Math.random() - 0.5) * 60;
+    el.style.left = (fromX + spreadX) + 'px';
+    el.style.top = (fromY + spreadY) + 'px';
+    el.style.transition = 'transform 0.85s cubic-bezier(0.4, 0, 0.6, 1), opacity 0.85s';
+    layer.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      el.style.transform = `translate(${toX - (fromX + spreadX)}px, ${toY - (fromY + spreadY)}px) scale(0.6)`;
+      el.style.opacity = '0';
+    }));
+    setTimeout(() => el.remove(), 900);
+  }
+  setTimeout(() => bumpPill(kind === 'xp' ? document.querySelectorAll('.hud-pill')[0] : hud.closest('.hud-pill')), 800);
+}
+function bumpPill(el) { if (!el) return; el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+
+/* ============== SHOP ============== */
+function renderShop() {
+  document.getElementById('shop-coins').textContent = state.player.coins;
+  const grid = document.getElementById('shop-grid');
+  grid.innerHTML = SHOP_ITEMS.map(item => {
+    const canBuy = state.player.coins >= item.cost;
+    return `<div class="shop-card ${canBuy ? 'affordable' : 'cant-afford'}" style="--shop-color:${item.color}" onclick="buyShopItem('${item.id}')">
+      <div class="shop-icon">${item.icon}</div>
+      <div class="shop-name">${item.name}</div>
+      <div class="shop-desc">${item.desc}</div>
+      <div class="shop-cost ${canBuy ? 'affordable' : 'cant-afford'}">💰 ${item.cost}</div>
+    </div>`;
+  }).join('');
+  const ach = document.getElementById('ach-grid');
+  ach.innerHTML = ACHIEVEMENTS.map(a => {
+    const unlocked = (state.achievements || []).includes(a.id);
+    return `<div class="ach-card ${unlocked ? 'unlocked' : 'locked'}">
+      <div class="ach-icon">${a.icon}</div>
+      <div class="ach-info">
+        <div class="ach-name">${a.name}</div>
+        <div class="ach-desc">${a.desc}</div>
+      </div>
+      ${unlocked ? '<div class="ach-check">✓</div>' : ''}
+    </div>`;
+  }).join('');
+}
+function buyShopItem(id) {
+  const item = SHOP_ITEMS.find(x => x.id === id);
+  if (!item) return;
+  if (state.player.coins < item.cost) { toast('Не хватает монет!'); return; }
+  state.player.coins -= item.cost;
+  item.apply(state);
+  saveState(); refreshHUD(); renderShop();
+  toast(`✓ Куплено: ${item.name}`);
+}
 
 /* ============== AR ============== */
 let cameraStream = null;
@@ -229,6 +328,17 @@ function startGeolocation() {
 
 /* ============== SPAWN ============== */
 function pickSpecies() {
+  if (state.modifiers?.rareBait) {
+    state.modifiers.rareBait = false;
+    const rarePool = RARITY_WEIGHTS.filter(t => t.ids.some(id => SPECIES[id].rarity >= 3));
+    const total = rarePool.reduce((s, r) => s + r.weight, 0);
+    let r = Math.random() * total;
+    for (const t of rarePool) {
+      if (r < t.weight) return t.ids[Math.floor(Math.random() * t.ids.length)];
+      r -= t.weight;
+    }
+    return 'camera';
+  }
   const total = RARITY_WEIGHTS.reduce((s, r) => s + r.weight, 0);
   let r = Math.random() * total;
   for (const t of RARITY_WEIGHTS) {
@@ -339,8 +449,14 @@ function throwBall() {
   state.player.balls--; refreshHUD(); saveState();
 
   const data = SPECIES[currentCatch.species];
+  let charmBonus = 0;
+  if (state.modifiers?.luckyCharms > 0) {
+    charmBonus = 0.3;
+    state.modifiers.luckyCharms--;
+  }
   const baseChance = 0.85 - (data.rarity - 1) * 0.15 - (currentCatch.level * 0.01);
-  const chance = Math.max(0.05, Math.min(0.98, baseChance + bonus));
+  const chance = Math.max(0.05, Math.min(0.98, baseChance + bonus + charmBonus));
+  if (timing === 'perfect') triggerAchievementCheck({ type: 'perfect_catch' });
   const fb = document.getElementById('catch-feedback');
   fb.textContent = ({ perfect: '💯 ИДЕАЛЬНО!', good: '👍 Хорошо', mid: '😐 Так себе', miss: '😬 Промах' })[timing] + ` · шанс ${Math.round(chance * 100)}%`;
 
@@ -368,16 +484,22 @@ function caughtCreature(sp) {
   state.collection.push(newC);
   state.spawns = state.spawns.filter(s => s.id !== sp.id);
   if (spawnMarkers[sp.id]) { map.removeLayer(spawnMarkers[sp.id]); delete spawnMarkers[sp.id]; }
-  const xpGain = 20 + sp.level * 5 + (data.rarity - 1) * 30;
+  let xpGain = 20 + sp.level * 5 + (data.rarity - 1) * 30;
   const coinGain = 5 + (data.rarity - 1) * 10;
+  if (state.modifiers?.xpBoostUntil && Date.now() < state.modifiers.xpBoostUntil) xpGain = Math.floor(xpGain * 1.5);
   state.player.coins += coinGain;
+  state.stats = state.stats || { wins: 0, crits: 0, catches: 0 };
+  state.stats.catches++;
   addXP(xpGain); saveState(); endCatch();
+  flyCoinTo(window.innerWidth / 2, window.innerHeight / 2, 'coin');
+  flyCoinTo(window.innerWidth / 2, window.innerHeight / 2 - 30, 'xp');
   showModal({
     thumb: renderSpriteForSpecies(sp.species),
     title: 'Поймал!',
     text: `${data.name} (ур. ${sp.level})`,
     stats: `<b>HP:</b> ${newC.hp} · <b>ATK:</b> ${data.atk + sp.level} · <b>DEF:</b> ${data.def + Math.floor(sp.level / 2)}<br><span style="color:#fbbf24">+${xpGain} XP · +${coinGain} 💰</span>`,
   });
+  triggerAchievementCheck({ type: 'catch', rarity: data.rarity });
 }
 function endCatch() {
   if (catchRingTimer) { clearInterval(catchRingTimer); catchRingTimer = null; }
@@ -401,12 +523,26 @@ function renderCollection() {
 function onCollectionCardClick(uid) {
   const c = state.collection.find(x => x.uid === uid); if (!c) return;
   const d = SPECIES[c.species];
+  const cost = powerUpCost(c.level);
+  const canPow = canPowerUp(state, c);
   showModal({
     thumb: renderSpriteForSpecies(c.species),
     title: d.name,
     text: `Ур. ${c.level} · ${rarityStars(d.rarity)}`,
-    stats: `<b>HP:</b> ${c.hp}<br><b>ATK:</b> ${d.atk + c.level}<br><b>DEF:</b> ${d.def + Math.floor(c.level / 2)}<br><b>SPD:</b> ${d.spd}<br><b>Атаки:</b> ${d.moves.join(', ')}`,
+    stats: `<b>HP:</b> ${c.hp}<br><b>ATK:</b> ${d.atk + c.level}<br><b>DEF:</b> ${d.def + Math.floor(c.level / 2)}<br><b>SPD:</b> ${d.spd}<br><b>Атаки:</b> ${d.moves.join(', ')}
+    <div class="modal-action-row" style="margin-top:14px; display:flex; gap:8px">
+      <button class="big-btn ${canPow ? 'gold' : ''}" ${canPow ? '' : 'disabled'} style="flex:1; padding:11px; font-size:13px" onclick="doPowerUp('${c.uid}')">⚡ Прокачать ${cost}💰</button>
+    </div>`,
   });
+}
+function doPowerUp(uid) {
+  const c = state.collection.find(x => x.uid === uid); if (!c) return;
+  const d = SPECIES[c.species];
+  if (!powerUp(state, c, d)) { toast('Не хватает монет'); return; }
+  saveState(); refreshHUD();
+  closeModal();
+  toast(`⬆️ ${d.name} → ур. ${c.level}!`);
+  setTimeout(() => onCollectionCardClick(uid), 250);
 }
 function renderTeamScreen() {
   const cur = document.getElementById('team-current');
@@ -456,6 +592,11 @@ function startTrainerBattle() {
     const c = state.collection.find(x => x.uid === uid); const d = SPECIES[c.species];
     return { uid: c.uid, species: c.species, level: c.level, hp: Math.floor(d.baseHp + c.level * 4), maxHp: Math.floor(d.baseHp + c.level * 4) };
   });
+  if (state.modifiers?.healNext) {
+    state.modifiers.healNext = false;
+    saveState();
+    toast('💊 Команда восстановлена!');
+  }
   battleState = { player: playerTeam, enemy: enemyTeam, pIdx: 0, eIdx: 0, turn: 'player', log: 'Дикий тренер бросает вызов!' };
   showScreen('battle-screen');
   setBattleFighters(playerTeam[0].species, enemyTeam[0].species);
@@ -499,6 +640,10 @@ function computeDamage(att, def, moveName) {
   if (Math.random() < 0.1) { dmg = Math.floor(dmg * 1.5); crit = true; }
   return { miss: false, dmg: Math.max(1, dmg), crit };
 }
+function trackCrit() {
+  state.stats = state.stats || { wins: 0, crits: 0, catches: 0 };
+  state.stats.crits++;
+}
 function useMove(moveIdx) {
   if (battleState.turn !== 'player') return;
   const p = battleState.player[battleState.pIdx], e = battleState.enemy[battleState.eIdx];
@@ -512,6 +657,7 @@ function useMove(moveIdx) {
   if (!res.miss) {
     e.hp -= res.dmg;
     spawnDamageNumber(res.dmg, 'enemy', res.crit);
+    if (res.crit) trackCrit();
   }
   battleState.turn = 'enemy';
   renderBattle();
@@ -578,7 +724,12 @@ function winBattle() {
     xpGain += 15 + e.level * 4 + (d.rarity - 1) * 15;
     coinGain += 10 + (d.rarity - 1) * 5;
   }
-  state.player.coins += coinGain; state.player.balls += 2; addXP(xpGain);
+  state.player.coins += coinGain; state.player.balls += 2;
+  state.stats = state.stats || { wins: 0, crits: 0, catches: 0 };
+  state.stats.wins++;
+  if (state.modifiers?.xpBoostUntil && Date.now() < state.modifiers.xpBoostUntil) xpGain = Math.floor(xpGain * 1.5);
+  addXP(xpGain);
+  triggerAchievementCheck({ type: 'win' });
   for (const p of battleState.player) {
     if (p.hp <= 0) continue;
     const c = state.collection.find(x => x.uid === p.uid); if (!c) continue;
@@ -596,9 +747,18 @@ function winBattle() {
 }
 function loseBattle() {
   battleState = null;
-  const lost = Math.min(state.player.coins, 10);
+  let lost = Math.min(state.player.coins, 10);
+  let saved = false;
+  if (state.modifiers?.savedFromLoss > 0) {
+    state.modifiers.savedFromLoss--;
+    lost = 0; saved = true;
+  }
   state.player.coins -= lost; saveState(); refreshHUD();
-  showModal({ title: 'Поражение', text: 'Подлечись и поймай новых бойцов', stats: lost > 0 ? `−${lost} 💰` : '' });
+  showModal({
+    title: 'Поражение',
+    text: saved ? '💖 Тебя спасла защита!' : 'Подлечись и поймай новых бойцов',
+    stats: lost > 0 ? `−${lost} 💰` : (saved ? '0 💰 (защита!)' : ''),
+  });
   showScreen('map-screen');
 }
 
@@ -626,3 +786,6 @@ window.fleeBattle = fleeBattle;
 window.endCatch = endCatch;
 window.closeModal = closeModal;
 window.toggleAR = toggleAR;
+window.renderShop = renderShop;
+window.buyShopItem = buyShopItem;
+window.doPowerUp = doPowerUp;
