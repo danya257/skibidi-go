@@ -1,5 +1,5 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { CHARACTER_BUILDERS } from './models.js';
+import { makeSmiler, animateSmiler, disposeMonster } from './horror_monsters.js';
 
 let horror = null;
 export function startHorror() { if (horror) return; horror = new HorrorGame(); }
@@ -21,8 +21,12 @@ class HorrorGame {
       yaw: 0, pitch: 0,
       vel: new THREE.Vector3(),
       bobT: 0,
+      stamina: 100, maxStamina: 100, sprintLocked: false,
+      hidden: false, hideSpot: null,
     };
     this.inputs = { fwd: 0, strafe: 0, sprint: false };
+    this.notes = []; // collected lore
+    this.notesTotal = 0;
 
     this.colliders = []; // {minX, maxX, minZ, maxZ}
     this.interactables = []; // {pos, radius, label, onUse, mesh, taken}
@@ -210,7 +214,13 @@ class HorrorGame {
     // Hint notes on walls
     this.addNote(0, 1.7, -11.7, 'Поверни вентили\nв порядке цифр\nна стене над ними');
     this.addNote(11.7, 1.7, 5, 'Если ошибёшься —\nначни сначала');
-    this.addNote(-11.7, 1.7, 0, '...а ОНО\nне любит свет');
+    this.addNote(-11.7, 1.7, 0, '...а ОНО\nне движется\nкогда смотришь');
+
+    // Lore notes (pickable, scattered on the floor)
+    this.addLoreNote(-7, -2, 'День 1.\nСвет погас этой ночью.\nВ подвале гудят трубы.');
+    this.addLoreNote(3, -9, 'День 3.\nВидел Его за углом.\nТонкий. Высокий. Молчит.\nГлаза светятся.');
+    this.addLoreNote(-4, 7, 'День 7.\n«Не моргай. Не отворачивайся.»\nТак сказал предыдущий.\nЕго больше нет.');
+    this.addLoreNote(8, 4, 'Если читаешь это —\nоно идёт за тобой.\nОткрой выход.\nНЕ ОБОРАЧИВАЙСЯ.');
 
     // Exit door (locked initially) — fills the gap in the south wall
     const doorMat = new THREE.MeshStandardMaterial({
@@ -395,18 +405,76 @@ class HorrorGame {
   }
 
   spawnEnemy() {
-    this.enemy = CHARACTER_BUILDERS.toilet(1);
-    this.enemy.scale.setScalar(0.6);
+    this.enemy = makeSmiler();
     this.enemy.position.set(0, 0, -8);
-    this.enemy.userData.angryEyes = null;
-    // Make eyes glow red for horror
-    this.enemy.traverse(o => {
-      if (o.material && o.material.color && o.material.color.getHex() === 0x000000 && o.geometry?.parameters?.radius === 0.06) {
-        o.material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-      }
-    });
     this.scene.add(this.enemy);
-    this.enemyHurtTime = 0;
+  }
+
+  addLoreNote(x, z, text) {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 192;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#e8d8a8'; ctx.fillRect(0, 0, 256, 192);
+    for (let i = 0; i < 70; i++) {
+      ctx.fillStyle = `rgba(120,80,30,${Math.random() * 0.45})`;
+      ctx.fillRect(Math.random() * 256, Math.random() * 192, 3 + Math.random() * 4, 3 + Math.random() * 4);
+    }
+    ctx.fillStyle = '#1a1208'; ctx.font = '15px Georgia, serif'; ctx.textAlign = 'center';
+    text.split('\n').forEach((l, i) => ctx.fillText(l, 128, 35 + i * 22));
+    const tex = new THREE.CanvasTexture(c);
+    const note = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.55, 0.42),
+      new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, depthWrite: false, transparent: true })
+    );
+    note.position.set(x, 0.08, z);
+    note.rotation.x = -Math.PI / 2 + 0.5;
+    note.rotation.z = (Math.random() - 0.5) * 0.6;
+    this.scene.add(note);
+    // Glowing light to find it in the dark
+    const ll = new THREE.PointLight(0xffaa55, 0.7, 2.2, 2);
+    ll.position.set(x, 0.4, z);
+    this.scene.add(ll);
+    this.notesTotal++;
+    this.interactables.push({
+      pos: new THREE.Vector3(x, 0.3, z),
+      radius: 1.2, label: '📜 Подобрать записку',
+      mesh: note, light: ll, taken: false,
+      onUse: () => {
+        const it = this.interactables.find(i => i.mesh === note);
+        if (it.taken) return;
+        it.taken = true;
+        this.scene.remove(note); this.scene.remove(ll);
+        note.material.map?.dispose(); note.material.dispose(); note.geometry.dispose();
+        this.notes.push(text);
+        this.showNote(text);
+        this.toast(`📜 Записки: ${this.notes.length} / ${this.notesTotal}`);
+        this.playNotePickup();
+      },
+    });
+  }
+
+  showNote(text) {
+    const panel = document.querySelector('.horror-note-panel');
+    if (!panel) return;
+    panel.querySelector('.note-paper-text').textContent = text;
+    panel.classList.remove('show'); void panel.offsetWidth;
+    panel.classList.add('show');
+    clearTimeout(this._noteHideT);
+    this._noteHideT = setTimeout(() => panel.classList.remove('show'), 6500);
+  }
+
+  playNotePickup() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.15);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.18, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.connect(g).connect(master);
+    osc.start(); osc.stop(ctx.currentTime + 0.42);
   }
 
   checkValveOrder() {
@@ -590,6 +658,14 @@ class HorrorGame {
 
     const stat = document.querySelector('.horror-status');
     if (stat) stat.textContent = `Кранов: ${this.valvesTurned.length} / 3`;
+    const stam = document.querySelector('.horror-stamina-fill');
+    if (stam) {
+      const pct = (this.player.stamina / this.player.maxStamina) * 100;
+      stam.style.width = pct + '%';
+      stam.classList.toggle('low', this.player.stamina < 25);
+    }
+    const notesEl = document.querySelector('.horror-notes-counter');
+    if (notesEl) notesEl.textContent = `📜 ${this.notes.length} / ${this.notesTotal}`;
   }
 
   toast(msg) {
@@ -831,7 +907,17 @@ class HorrorGame {
     if (this.keys['KeyS'] || this.keys['ArrowDown']) fwd = -1;
     if (this.keys['KeyA'] || this.keys['ArrowLeft']) strafe = -1;
     if (this.keys['KeyD'] || this.keys['ArrowRight']) strafe = 1;
-    const sprint = this.keys['ShiftLeft'] || this.inputs.sprint;
+    // Stamina-gated sprint
+    const wantSprint = this.keys['ShiftLeft'] || this.inputs.sprint;
+    const sprint = wantSprint && this.player.stamina > 5 && !this.player.sprintLocked;
+    const moving = Math.abs(fwd) > 0.05 || Math.abs(strafe) > 0.05;
+    if (sprint && moving) {
+      this.player.stamina = Math.max(0, this.player.stamina - dt * 28);
+      if (this.player.stamina < 1) this.player.sprintLocked = true;
+    } else {
+      this.player.stamina = Math.min(this.player.maxStamina, this.player.stamina + dt * (moving ? 12 : 22));
+      if (this.player.stamina > 30) this.player.sprintLocked = false;
+    }
     const speed = sprint ? 4.2 : 2.6;
     const cy = Math.cos(this.player.yaw), sy = Math.sin(this.player.yaw);
     // Camera-aligned: forward = (-sin, 0, -cos), right = (cos, 0, -sin)
@@ -844,7 +930,6 @@ class HorrorGame {
     if (!this.collides(this.player.pos.x, nz)) this.player.pos.z = nz;
 
     // Walking bob + footstep audio
-    const moving = Math.abs(fwd) > 0.05 || Math.abs(strafe) > 0.05;
     if (moving) {
       this.player.bobT += dt * (sprint ? 12 : 8);
       const stepInterval = sprint ? 0.32 : 0.45;
@@ -891,8 +976,8 @@ class HorrorGame {
       }
       // Face player
       this.enemy.rotation.y = Math.atan2(tdx, tdz);
-      // Idle bob
-      this.enemy.position.y = Math.sin(performance.now() * 0.003) * 0.05;
+      // Smiler idle: subtle breathing + aura pulse
+      animateSmiler(this.enemy, performance.now() * 0.001, dist);
 
       // Heartbeat scales with proximity (8m → silent, 1m → urgent)
       if (dist < 8) {
@@ -922,18 +1007,17 @@ class HorrorGame {
     if (this.enemy) {
       const fx = -Math.sin(this.player.yaw), fz = -Math.cos(this.player.yaw);
       this.enemy.position.set(
-        this.player.pos.x + fx * 0.7,
-        this.player.pos.y - 0.4,
-        this.player.pos.z + fz * 0.7
+        this.player.pos.x + fx * 0.55,
+        this.player.pos.y - 0.6,
+        this.player.pos.z + fz * 0.55
       );
-      this.enemy.scale.setScalar(2.8);
+      this.enemy.scale.setScalar(2.5);
       this.enemy.rotation.y = this.player.yaw + Math.PI;
-      // make head/eyes glow brighter
-      this.enemy.traverse(o => {
-        if (o.material?.color?.getHex && o.material.color.getHex() === 0xff0000) {
-          o.material = new THREE.MeshBasicMaterial({ color: 0xff4444 });
-        }
-      });
+      // Boost aura to red blast
+      if (this.enemy.userData.aura) {
+        this.enemy.userData.aura.material.opacity = 0.6;
+        this.enemy.userData.aura.material.color.setHex(0xff0033);
+      }
     }
     // Brighten flashlight to white-out then fade
     if (this.flash) this.flash.intensity = 30;
