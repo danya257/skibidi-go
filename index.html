@@ -35,6 +35,7 @@
       <div class="hud-pill green"><span class="icon">💰</span><span id="hud-coins">0</span></div>
     </div>
     <div id="map"></div>
+    <button class="horror-entry" onclick="enterHorror()">💀 ПОДВАЛ</button>
     <div id="hud-bottom">
       <button class="nav-btn" onclick="centerOnPlayer()"><div class="ico">📍</div><div>Я</div></button>
       <button class="nav-btn" onclick="showScreen('collection-screen'); renderCollection()"><div class="ico">📒</div><div>Декс</div></button>
@@ -97,6 +98,28 @@
     <div class="team-current" id="team-current"></div>
     <div class="team-hint">Тапни бойца чтобы добавить/убрать. Макс 3.</div>
     <div id="team-grid" class="collection-grid"></div>
+  </div>
+
+  <!-- HORROR -->
+  <div id="horror-screen" class="screen">
+    <canvas id="horror-canvas"></canvas>
+    <div class="horror-vignette"></div>
+    <div class="horror-crosshair">·</div>
+    <div class="horror-prompt"></div>
+    <div class="horror-status">Кранов: 0 / 3</div>
+    <button class="horror-exit-btn" onclick="exitHorror()">← Выйти</button>
+    <div class="horror-toast"></div>
+    <div class="horror-joy"><div class="horror-joy-dot"></div></div>
+    <div class="horror-look"></div>
+    <button class="horror-interact">⊕</button>
+    <div class="horror-end">
+      <div class="horror-end-title">★</div>
+      <div class="horror-end-text"></div>
+      <div class="horror-end-buttons">
+        <button class="big-btn primary" onclick="retryHorror()">🔄 Заново</button>
+        <button class="big-btn flee" onclick="exitHorror()">← На карту</button>
+      </div>
+    </div>
   </div>
 
   <!-- BATTLE -->

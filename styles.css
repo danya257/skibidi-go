@@ -733,6 +733,131 @@ body.ar-on #battle-screen { background: linear-gradient(180deg, rgba(0,0,0,0.55)
   color: #ffd700;
 }
 
+/* ============== HORROR MODE ============== */
+.horror-entry {
+  position: absolute; z-index: 1000;
+  top: calc(70px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right));
+  background: linear-gradient(135deg, #6b0000, #2a0000);
+  border: 2px solid #ff0044; color: white;
+  padding: 10px 14px; border-radius: 12px;
+  font-weight: 900; font-size: 13px; letter-spacing: 1.5px;
+  box-shadow: 0 0 24px rgba(255,0,68,0.7), inset 0 1px 0 rgba(255,255,255,0.2);
+  animation: horrorPulse 2.2s ease-in-out infinite;
+  cursor: pointer;
+  text-shadow: 0 0 8px #ff0044;
+}
+@keyframes horrorPulse {
+  0%, 100% { box-shadow: 0 0 24px rgba(255,0,68,0.7), inset 0 1px 0 rgba(255,255,255,0.2); transform: scale(1); }
+  50% { box-shadow: 0 0 36px rgba(255,0,68,1), inset 0 1px 0 rgba(255,255,255,0.2); transform: scale(1.04); }
+}
+
+#horror-screen { background: #000; padding: 0; }
+#horror-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+
+.horror-vignette {
+  position: absolute; inset: 0; pointer-events: none; z-index: 5;
+  background: radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.7) 90%, rgba(0,0,0,1) 100%);
+}
+.horror-crosshair {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 10; color: rgba(255,255,255,0.6); font-size: 28px; pointer-events: none;
+  text-shadow: 0 0 4px black;
+}
+.horror-prompt {
+  position: absolute; left: 50%; top: 60%; transform: translateX(-50%);
+  z-index: 10; pointer-events: none; display: none;
+  background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.3);
+  color: #fff; padding: 8px 18px; border-radius: 8px;
+  font-weight: 800; font-size: 14px; letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(0,0,0,0.9);
+}
+.horror-status {
+  position: absolute; top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left));
+  z-index: 10; pointer-events: none;
+  background: rgba(0,0,0,0.7); border: 1px solid rgba(255,77,109,0.5);
+  color: #ff8888; padding: 8px 14px; border-radius: 10px;
+  font-family: 'Bangers', cursive; font-size: 18px; letter-spacing: 1.5px;
+}
+.horror-exit-btn {
+  position: absolute; top: calc(12px + env(safe-area-inset-top)); right: calc(12px + env(safe-area-inset-right));
+  z-index: 20;
+  background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.3);
+  color: white; padding: 8px 14px; border-radius: 10px;
+  font-weight: 700; font-size: 12px; cursor: pointer;
+}
+.horror-toast {
+  position: absolute; top: 80px; left: 50%; transform: translateX(-50%) translateY(-20px);
+  z-index: 30; pointer-events: none; opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  background: rgba(20,5,5,0.95); border: 2px solid #ff4444;
+  color: #ffaaaa; padding: 12px 24px; border-radius: 12px;
+  font-family: 'Bangers', cursive; font-size: 22px; letter-spacing: 2px;
+  box-shadow: 0 0 32px rgba(255,0,0,0.6);
+}
+.horror-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Mobile virtual controls */
+.horror-joy {
+  position: absolute; bottom: calc(30px + env(safe-area-inset-bottom));
+  left: calc(20px + env(safe-area-inset-left));
+  z-index: 15; width: 110px; height: 110px;
+  border: 2px solid rgba(255,255,255,0.15);
+  background: rgba(0,0,0,0.35); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: none;
+}
+.horror-joy-dot {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(255,255,255,0.3);
+  border: 2px solid rgba(255,255,255,0.5);
+  transition: transform 0.05s;
+  pointer-events: none;
+}
+.horror-look {
+  position: absolute; right: 0; top: 0; bottom: 0; width: 60%;
+  z-index: 12; touch-action: none;
+}
+.horror-interact {
+  position: absolute; bottom: calc(50px + env(safe-area-inset-bottom));
+  right: calc(20px + env(safe-area-inset-right));
+  z-index: 16; width: 70px; height: 70px;
+  border: 2px solid rgba(255,255,255,0.4);
+  background: rgba(255,255,255,0.1); color: white;
+  border-radius: 50%; font-size: 28px;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.6);
+}
+.horror-interact:active { background: rgba(255,255,255,0.25); transform: scale(0.94); }
+
+@media (hover: hover) and (pointer: fine) {
+  .horror-joy, .horror-look, .horror-interact { display: none; }
+}
+
+.horror-end {
+  position: absolute; inset: 0; z-index: 100;
+  display: none; align-items: center; justify-content: center; flex-direction: column;
+  background: radial-gradient(circle at center, rgba(80,0,0,0.85), rgba(0,0,0,0.98));
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  text-align: center; padding: 30px;
+}
+.horror-end.show { display: flex; animation: horrorEndFade 0.4s; }
+@keyframes horrorEndFade { from { opacity: 0; } to { opacity: 1; } }
+.horror-end-title {
+  font-family: 'Bangers', cursive; font-size: 56px;
+  letter-spacing: 4px; margin-bottom: 12px;
+}
+.horror-end.dead .horror-end-title { color: #ff4444; text-shadow: 0 0 32px #ff0000, 0 4px 12px black; animation: deadShake 0.4s ease-in-out infinite alternate; }
+.horror-end.won .horror-end-title { color: #ffd700; text-shadow: 0 0 32px #ffaa00, 0 4px 12px black; }
+@keyframes deadShake {
+  from { transform: translateX(-3px); }
+  to { transform: translateX(3px); }
+}
+.horror-end-text {
+  font-weight: 700; font-size: 16px; max-width: 320px;
+  margin-bottom: 24px; opacity: 0.9;
+}
+.horror-end-buttons { display: flex; gap: 12px; }
+
 /* ============== DESKTOP ============== */
 @media (min-width: 900px) {
   #app {

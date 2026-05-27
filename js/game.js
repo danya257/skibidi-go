@@ -8,6 +8,31 @@ import {
 import { MOVE_COLORS } from './effects.js';
 import { ACHIEVEMENTS, checkAchievements, SHOP_ITEMS, powerUpCost, canPowerUp, powerUp } from './progression.js';
 import { getTier } from './models.js';
+import { startHorror, stopHorror } from './horror.js';
+
+function enterHorror() {
+  showScreen('horror-screen');
+  const endEl = document.querySelector('.horror-end');
+  if (endEl) { endEl.classList.remove('show', 'dead', 'won'); }
+  setTimeout(() => startHorror(), 50);
+}
+function exitHorror() {
+  stopHorror();
+  showScreen('map-screen');
+}
+function retryHorror() {
+  stopHorror();
+  const endEl = document.querySelector('.horror-end');
+  if (endEl) endEl.classList.remove('show', 'dead', 'won');
+  setTimeout(() => startHorror(), 100);
+}
+window._horrorReward = function(coins) {
+  state.player.coins += coins;
+  saveState(); refreshHUD();
+};
+window.enterHorror = enterHorror;
+window.exitHorror = exitHorror;
+window.retryHorror = retryHorror;
 
 function spawnDamageNumber(dmg, side, isCrit) {
   setTimeout(() => {
