@@ -1,0 +1,14 @@
+{
+  "name": "Skibidi GO",
+  "short_name": "Skibidi GO",
+  "description": "Lovi skibidi-tualetov v realnom mire",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0c24",
+  "theme_color": "#5a4fff",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Skibidi GO</title>
+<meta name="theme-color" content="#5a4fff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Skibidi GO">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<video id="ar-video" playsinline muted autoplay></video>
+
+<div id="app">
+
+  <!-- MAP SCREEN -->
+  <div id="map-screen" class="screen active">
+    <div id="hud-top">
+      <div class="hud-pill">
+        <span class="lbl">УР</span>
+        <span id="hud-level">1</span>
+        <div class="xp-bar"><div class="xp-fill" id="hud-xp-fill"></div></div>
+      </div>
+      <div class="hud-pill gold"><span class="icon">🧹</span><span id="hud-balls">10</span></div>
+      <div class="hud-pill green"><span class="icon">💰</span><span id="hud-coins">0</span></div>
+    </div>
+    <div id="map"></div>
+    <div id="hud-bottom">
+      <button class="nav-btn" onclick="centerOnPlayer()"><div class="ico">📍</div><div>Я</div></button>
+      <button class="nav-btn" onclick="showScreen('collection-screen'); renderCollection()"><div class="ico">📒</div><div>Декс</div></button>
+      <button class="nav-btn" onclick="showScreen('team-screen'); renderTeamScreen()"><div class="ico">⚔️</div><div>Команда</div></button>
+      <button class="nav-btn danger" onclick="startTrainerBattle()"><div class="ico">🥊</div><div>Бой</div></button>
+    </div>
+  </div>
+
+  <!-- CATCH SCREEN -->
+  <div id="catch-screen" class="screen">
+    <button class="ar-toggle" onclick="toggleAR()">📷 AR выкл</button>
+    <div class="catch-header">
+      <div class="catch-name" id="catch-name"></div>
+      <div class="catch-lvl" id="catch-lvl"></div>
+    </div>
+    <div id="catch-canvas-wrap">
+      <canvas id="catch-canvas"></canvas>
+      <div class="catch-target-ring"></div>
+      <div class="catch-ring" id="catch-ring"></div>
+    </div>
+    <div class="catch-footer">
+      <div class="catch-feedback" id="catch-feedback"></div>
+      <div class="catch-controls">
+        <button class="big-btn flee" onclick="endCatch()">🏃 Сбежать</button>
+        <button class="big-btn primary" id="catch-throw-btn" onclick="throwBall()">🧹 Бросить!</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLLECTION -->
+  <div id="collection-screen" class="screen">
+    <div class="screen-header">
+      <div class="screen-title">📒 Скибидекс</div>
+      <button class="back-btn" onclick="showScreen('map-screen')">← Назад</button>
+    </div>
+    <div id="collection-grid" class="collection-grid"></div>
+  </div>
+
+  <!-- TEAM -->
+  <div id="team-screen" class="screen">
+    <div class="screen-header">
+      <div class="screen-title">⚔️ Команда</div>
+      <button class="back-btn" onclick="showScreen('map-screen')">← Назад</button>
+    </div>
+    <div class="team-current" id="team-current"></div>
+    <div class="team-hint">Тапни бойца чтобы добавить/убрать. Макс 3.</div>
+    <div id="team-grid" class="collection-grid"></div>
+  </div>
+
+  <!-- BATTLE -->
+  <div id="battle-screen" class="screen">
+    <button class="ar-toggle" onclick="toggleAR()">📷 AR выкл</button>
+    <div id="battle-canvas-wrap">
+      <canvas id="battle-canvas"></canvas>
+      <div class="battle-overlay-top">
+        <div class="battler-card enemy">
+          <div class="battler-name" id="enemy-name">—</div>
+          <div class="battler-lvl" id="enemy-lvl">Ур. 1</div>
+          <div class="hp-bar"><div class="hp-fill" id="enemy-hp"></div></div>
+          <div class="hp-text" id="enemy-hp-text">100/100</div>
+        </div>
+      </div>
+      <div class="battle-overlay-bottom">
+        <div class="battler-card player">
+          <div class="battler-name" id="player-name">—</div>
+          <div class="battler-lvl" id="player-lvl">Ур. 1</div>
+          <div class="hp-bar"><div class="hp-fill" id="player-hp"></div></div>
+          <div class="hp-text" id="player-hp-text">100/100</div>
+        </div>
+      </div>
+    </div>
+    <div class="battle-controls">
+      <div class="battle-log" id="battle-log">Бой начался!</div>
+      <div class="moves-grid" id="moves-grid"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<div id="modal-overlay">
+  <div class="modal">
+    <div id="modal-thumb-wrap"></div>
+    <div class="modal-title" id="modal-title">Готово</div>
+    <div class="modal-text" id="modal-text"></div>
+    <div class="modal-stats" id="modal-stats" style="display:none"></div>
+    <button class="big-btn primary" onclick="closeModal()">Ок</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module" src="js/game.js"></script>
+</body>
+</html>
