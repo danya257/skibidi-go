@@ -7,6 +7,7 @@ import {
 } from './scenes.js';
 import { MOVE_COLORS } from './effects.js';
 import { ACHIEVEMENTS, checkAchievements, SHOP_ITEMS, powerUpCost, canPowerUp, powerUp } from './progression.js';
+import { getTier } from './models.js';
 
 function spawnDamageNumber(dmg, side, isCrit) {
   setTimeout(() => {
@@ -389,7 +390,7 @@ function renderSpawns() {
   for (const sp of state.spawns) {
     if (spawnMarkers[sp.id]) continue;
     const data = SPECIES[sp.species];
-    const url = renderSpriteForSpecies(sp.species);
+    const url = renderSpriteForSpecies(sp.species, sp.level);
     const icon = L.divIcon({
       className: '',
       html: `<div class="toilet-sprite-wrap"><img src="${url}"><div class="rarity-tag r${data.rarity}">L${sp.level} ${rarityStars(data.rarity)}</div></div>`,
@@ -421,7 +422,7 @@ function startCatch(sp) {
   document.getElementById('catch-feedback').textContent = 'Жми «Бросить» когда круг сожмётся до пунктира';
   document.getElementById('catch-throw-btn').disabled = false;
   showScreen('catch-screen');
-  setCatchCharacter(sp.species);
+  setCatchCharacter(sp.species, sp.level);
   catchRingScale = 2.0; catchRingDir = -1;
   if (catchRingTimer) clearInterval(catchRingTimer);
   catchRingTimer = setInterval(animateCatchRing, 30);
@@ -494,7 +495,7 @@ function caughtCreature(sp) {
   flyCoinTo(window.innerWidth / 2, window.innerHeight / 2, 'coin');
   flyCoinTo(window.innerWidth / 2, window.innerHeight / 2 - 30, 'xp');
   showModal({
-    thumb: renderSpriteForSpecies(sp.species),
+    thumb: renderSpriteForSpecies(sp.species, sp.level),
     title: 'Поймал!',
     text: `${data.name} (ур. ${sp.level})`,
     stats: `<b>HP:</b> ${newC.hp} · <b>ATK:</b> ${data.atk + sp.level} · <b>DEF:</b> ${data.def + Math.floor(sp.level / 2)}<br><span style="color:#fbbf24">+${xpGain} XP · +${coinGain} 💰</span>`,
@@ -513,8 +514,11 @@ function renderCollection() {
   if (state.collection.length === 0) { grid.innerHTML = '<div class="empty-state">Пока пусто. Иди лови скибидиков!</div>'; return; }
   grid.innerHTML = state.collection.map(c => {
     const d = SPECIES[c.species];
-    return `<div class="col-card r${d.rarity}" onclick="onCollectionCardClick('${c.uid}')">
-      <div class="col-thumb"><img src="${renderSpriteForSpecies(c.species)}"></div>
+    const t = getTier(c.level);
+    const tierBadge = t > 1 ? `<div class="tier-badge t${t}">${'★'.repeat(t)}</div>` : '';
+    return `<div class="col-card r${d.rarity} tier-${t}" onclick="onCollectionCardClick('${c.uid}')">
+      ${tierBadge}
+      <div class="col-thumb"><img src="${renderSpriteForSpecies(c.species, c.level)}"></div>
       <div class="col-name" style="color:${rarityColor(d.rarity)}">${d.name}</div>
       <div class="col-lvl">Ур. ${c.level} · HP ${c.hp}</div>
     </div>`;
@@ -525,11 +529,14 @@ function onCollectionCardClick(uid) {
   const d = SPECIES[c.species];
   const cost = powerUpCost(c.level);
   const canPow = canPowerUp(state, c);
+  const t = getTier(c.level);
+  const nextTier = t < 3 ? (t === 1 ? 10 : 20) : null;
+  const tierLine = `<div style="margin-top:6px"><b>Тир:</b> ${'★'.repeat(t)}${'☆'.repeat(3 - t)}${nextTier ? ` · Эволюция на ур. ${nextTier}` : ''}</div>`;
   showModal({
-    thumb: renderSpriteForSpecies(c.species),
+    thumb: renderSpriteForSpecies(c.species, c.level),
     title: d.name,
     text: `Ур. ${c.level} · ${rarityStars(d.rarity)}`,
-    stats: `<b>HP:</b> ${c.hp}<br><b>ATK:</b> ${d.atk + c.level}<br><b>DEF:</b> ${d.def + Math.floor(c.level / 2)}<br><b>SPD:</b> ${d.spd}<br><b>Атаки:</b> ${d.moves.join(', ')}
+    stats: `<b>HP:</b> ${c.hp}<br><b>ATK:</b> ${d.atk + c.level}<br><b>DEF:</b> ${d.def + Math.floor(c.level / 2)}<br><b>SPD:</b> ${d.spd}<br><b>Атаки:</b> ${d.moves.join(', ')}${tierLine}
     <div class="modal-action-row" style="margin-top:14px; display:flex; gap:8px">
       <button class="big-btn ${canPow ? 'gold' : ''}" ${canPow ? '' : 'disabled'} style="flex:1; padding:11px; font-size:13px" onclick="doPowerUp('${c.uid}')">⚡ Прокачать ${cost}💰</button>
     </div>`,
@@ -538,12 +545,41 @@ function onCollectionCardClick(uid) {
 function doPowerUp(uid) {
   const c = state.collection.find(x => x.uid === uid); if (!c) return;
   const d = SPECIES[c.species];
+  const oldTier = getTier(c.level);
   if (!powerUp(state, c, d)) { toast('Не хватает монет'); return; }
+  const newTier = getTier(c.level);
   saveState(); refreshHUD();
   closeModal();
-  toast(`⬆️ ${d.name} → ур. ${c.level}!`);
-  setTimeout(() => onCollectionCardClick(uid), 250);
+  if (newTier > oldTier) {
+    showEvolution(c);
+  } else {
+    toast(`⬆️ ${d.name} → ур. ${c.level}!`);
+    setTimeout(() => onCollectionCardClick(uid), 250);
+  }
 }
+function showEvolution(creature) {
+  const d = SPECIES[creature.species];
+  const t = getTier(creature.level);
+  const overlay = document.createElement('div');
+  overlay.id = 'evolution-overlay';
+  overlay.innerHTML = `
+    <div class="evo-stars"></div>
+    <div class="evo-content">
+      <div class="evo-title">★ ЭВОЛЮЦИЯ! ★</div>
+      <img class="evo-thumb" src="${renderSpriteForSpecies(creature.species, creature.level)}">
+      <div class="evo-name">${d.name}</div>
+      <div class="evo-tier">ТИР ${t} · УР. ${creature.level}</div>
+      <button class="big-btn primary" onclick="closeEvolution('${creature.uid}')">Невероятно!</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add('show'));
+}
+function closeEvolution(uid) {
+  const o = document.getElementById('evolution-overlay');
+  if (o) o.remove();
+  if (uid) setTimeout(() => onCollectionCardClick(uid), 200);
+}
+window.closeEvolution = closeEvolution;
 function renderTeamScreen() {
   const cur = document.getElementById('team-current');
   cur.innerHTML = '';
@@ -552,7 +588,7 @@ function renderTeamScreen() {
     const div = document.createElement('div');
     if (uid) {
       const c = state.collection.find(x => x.uid === uid);
-      if (c) { div.className = 'team-slot filled'; div.innerHTML = `<img src="${renderSpriteForSpecies(c.species)}">`; }
+      if (c) { div.className = 'team-slot filled'; div.innerHTML = `<img src="${renderSpriteForSpecies(c.species, c.level)}">`; }
       else div.className = 'team-slot';
     } else { div.className = 'team-slot'; div.textContent = '+'; }
     cur.appendChild(div);
@@ -562,8 +598,11 @@ function renderTeamScreen() {
   grid.innerHTML = state.collection.map(c => {
     const d = SPECIES[c.species];
     const inTeam = state.team.includes(c.uid);
-    return `<div class="col-card r${d.rarity} ${inTeam ? 'col-selected' : ''}" onclick="toggleTeam('${c.uid}')">
-      <div class="col-thumb"><img src="${renderSpriteForSpecies(c.species)}"></div>
+    const t = getTier(c.level);
+    const tierBadge = t > 1 ? `<div class="tier-badge t${t}">${'★'.repeat(t)}</div>` : '';
+    return `<div class="col-card r${d.rarity} tier-${t} ${inTeam ? 'col-selected' : ''}" onclick="toggleTeam('${c.uid}')">
+      ${tierBadge}
+      <div class="col-thumb"><img src="${renderSpriteForSpecies(c.species, c.level)}"></div>
       <div class="col-name" style="color:${rarityColor(d.rarity)}">${d.name}</div>
       <div class="col-lvl">Ур. ${c.level}</div>
     </div>`;
@@ -599,7 +638,7 @@ function startTrainerBattle() {
   }
   battleState = { player: playerTeam, enemy: enemyTeam, pIdx: 0, eIdx: 0, turn: 'player', log: 'Дикий тренер бросает вызов!' };
   showScreen('battle-screen');
-  setBattleFighters(playerTeam[0].species, enemyTeam[0].species);
+  setBattleFighters(playerTeam[0].species, enemyTeam[0].species, playerTeam[0].level, enemyTeam[0].level);
   renderBattle();
 }
 function renderBattle() {
@@ -688,7 +727,7 @@ function checkBattleState() {
     if (battleState.eIdx >= battleState.enemy.length) return setTimeout(winBattle, 900);
     setTimeout(() => {
       battleState.turn = 'player'; battleState.log = 'Враг выпускает следующего!';
-      setBattleFighters(p.species, battleState.enemy[battleState.eIdx].species);
+      setBattleFighters(p.species, battleState.enemy[battleState.eIdx].species, p.level, battleState.enemy[battleState.eIdx].level);
       renderBattle();
     }, 900); return;
   }
@@ -699,7 +738,7 @@ function checkBattleState() {
     battleState.pIdx = next;
     setTimeout(() => {
       battleState.turn = 'player'; battleState.log = 'Выпускаешь следующего!';
-      setBattleFighters(battleState.player[battleState.pIdx].species, e.species);
+      setBattleFighters(battleState.player[battleState.pIdx].species, e.species, battleState.player[battleState.pIdx].level, e.level);
       renderBattle();
     }, 900); return;
   }
@@ -712,7 +751,7 @@ function swapNext() {
   battleState.pIdx = next;
   battleState.log = 'Меняешь бойца! Противник атакует.';
   battleState.turn = 'enemy';
-  setBattleFighters(battleState.player[next].species, battleState.enemy[battleState.eIdx].species);
+  setBattleFighters(battleState.player[next].species, battleState.enemy[battleState.eIdx].species, battleState.player[next].level, battleState.enemy[battleState.eIdx].level);
   renderBattle();
   setTimeout(enemyTurn, 800);
 }

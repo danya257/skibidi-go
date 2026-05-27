@@ -1,5 +1,5 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { CHARACTER_BUILDERS, setupSceneLights, disposeCharacter } from './models.js';
+import { CHARACTER_BUILDERS, setupSceneLights, disposeCharacter, getTier, animateTierDecorations } from './models.js';
 import { EffectsLayer, playMoveEffects, makeParticleBurst, makeShockwave, makeSphereWave, makeFloatingGlows } from './effects.js';
 
 let spriteRenderer = null, spriteScene = null, spriteCamera = null;
@@ -17,20 +17,22 @@ function initSpriteRenderer() {
   spriteCamera.lookAt(0, 1.0, 0);
 }
 
-export function renderSpriteForSpecies(speciesKey) {
-  if (spriteCache[speciesKey]) return spriteCache[speciesKey];
+export function renderSpriteForSpecies(speciesKey, level = 1) {
+  const tier = getTier(level);
+  const key = `${speciesKey}_t${tier}`;
+  if (spriteCache[key]) return spriteCache[key];
   if (!spriteRenderer) initSpriteRenderer();
-  const char = CHARACTER_BUILDERS[speciesKey]();
+  const char = CHARACTER_BUILDERS[speciesKey](level);
   spriteScene.add(char);
   spriteRenderer.render(spriteScene, spriteCamera);
   const url = spriteRenderer.domElement.toDataURL('image/png');
-  spriteCache[speciesKey] = url;
+  spriteCache[key] = url;
   spriteScene.remove(char);
   disposeCharacter(char);
   return url;
 }
 export function preloadAllSprites() {
-  Object.keys(CHARACTER_BUILDERS).forEach(k => renderSpriteForSpecies(k));
+  Object.keys(CHARACTER_BUILDERS).forEach(k => renderSpriteForSpecies(k, 1));
 }
 
 /* ====================================================================
@@ -102,6 +104,7 @@ export function initCatchScene(canvasEl, isActiveFn) {
         if (catchSc.shake < 0.005) { catchSc.shake = 0; catchSc.char.position.x = 0; catchSc.char.position.z = 0; }
       }
       if (catchSc.char.userData.head) catchSc.char.userData.head.rotation.z = Math.sin(catchSc.t * 2.5) * 0.07;
+      animateTierDecorations(catchSc.char, catchSc.t);
     }
 
     catchSc.effects.update(0.016);
@@ -110,9 +113,9 @@ export function initCatchScene(canvasEl, isActiveFn) {
   loop();
 }
 
-export function setCatchCharacter(speciesKey) {
+export function setCatchCharacter(speciesKey, level = 1) {
   if (catchSc.char) { catchSc.scene.remove(catchSc.char); disposeCharacter(catchSc.char); }
-  catchSc.char = CHARACTER_BUILDERS[speciesKey]();
+  catchSc.char = CHARACTER_BUILDERS[speciesKey](level);
   catchSc.char.position.set(0, 0, 0);
   catchSc.scene.add(catchSc.char);
   if (catchSc.effects) {
@@ -301,6 +304,7 @@ export function initBattleScene(canvasEl, isActiveFn) {
         }
       }
       if (char.userData.head) char.userData.head.rotation.z = Math.sin(battleSc.t * 2 + (side === 'enemy' ? 0 : 1.5)) * 0.06;
+      animateTierDecorations(char, battleSc.t);
     }
 
     if (battleSc.playerLunge > 0) battleSc.playerLunge = Math.max(0, battleSc.playerLunge - 0.08);
@@ -320,14 +324,14 @@ export function initBattleScene(canvasEl, isActiveFn) {
   loop();
 }
 
-export function setBattleFighters(playerSpecies, enemySpecies) {
+export function setBattleFighters(playerSpecies, enemySpecies, playerLevel = 1, enemyLevel = 1) {
   if (battleSc.player) { battleSc.scene.remove(battleSc.player); disposeCharacter(battleSc.player); }
   if (battleSc.enemy) { battleSc.scene.remove(battleSc.enemy); disposeCharacter(battleSc.enemy); }
-  battleSc.player = CHARACTER_BUILDERS[playerSpecies]();
+  battleSc.player = CHARACTER_BUILDERS[playerSpecies](playerLevel);
   battleSc.player.position.set(1.4, 0, 0);
   battleSc.player.rotation.y = -Math.PI / 2;
   battleSc.scene.add(battleSc.player);
-  battleSc.enemy = CHARACTER_BUILDERS[enemySpecies]();
+  battleSc.enemy = CHARACTER_BUILDERS[enemySpecies](enemyLevel);
   battleSc.enemy.position.set(-1.4, 0, 0);
   battleSc.enemy.rotation.y = Math.PI / 2;
   battleSc.scene.add(battleSc.enemy);
