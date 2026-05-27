@@ -963,6 +963,66 @@ body.ar-on #battle-screen { background: linear-gradient(180deg, rgba(0,0,0,0.55)
   100% { opacity: 0; }
 }
 
+/* Subtle scare flash (non-lethal screamer) */
+.horror-scare-flash {
+  position: absolute; inset: 0; z-index: 45;
+  pointer-events: none; display: none;
+  background: radial-gradient(circle at center, rgba(255,40,40,0.55), rgba(40,0,0,0.85));
+  mix-blend-mode: screen;
+}
+.horror-scare-flash.show {
+  display: block;
+  animation: scareFlash 0.45s ease-out forwards;
+}
+@keyframes scareFlash {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 0; }
+}
+
+/* Level select */
+.horror-level-select {
+  position: absolute; inset: 0; z-index: 210;
+  display: none; align-items: center; justify-content: center;
+  background: radial-gradient(circle at center, rgba(40,5,5,0.95), rgba(0,0,0,0.99));
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  padding: 20px; overflow-y: auto;
+}
+.horror-level-select.show { display: flex; animation: tutFadeIn 0.4s; }
+.lvl-content {
+  max-width: 440px; width: 100%;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.lvl-title {
+  font-family: 'Bangers', cursive; font-size: 32px; letter-spacing: 3px;
+  text-align: center; color: #ff4444;
+  text-shadow: 0 0 18px #ff0044, 0 0 32px #ff0000, 0 4px 8px black;
+  margin-bottom: 8px;
+  animation: tutTitlePulse 1.8s ease-in-out infinite;
+}
+.lvl-card {
+  background: linear-gradient(160deg, rgba(50,20,20,0.9), rgba(20,8,8,0.95));
+  border: 2px solid rgba(255,77,109,0.5);
+  border-radius: 16px; padding: 16px;
+  display: flex; gap: 14px; align-items: center; text-align: left;
+  color: white; cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+  transition: transform 0.15s, box-shadow 0.2s, border-color 0.2s;
+}
+.lvl-card:hover { transform: translateY(-2px); border-color: #ff6644; box-shadow: 0 10px 28px rgba(255,68,68,0.4); }
+.lvl-card:active { transform: scale(0.97); }
+.lvl-card.hard { border-color: rgba(140,40,200,0.55); }
+.lvl-card.hard:hover { border-color: #aa44ff; box-shadow: 0 10px 28px rgba(170,68,255,0.45); }
+.lvl-icon {
+  font-size: 44px; flex-shrink: 0;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.7));
+}
+.lvl-info { flex: 1; }
+.lvl-name { font-family: 'Bangers', cursive; font-size: 22px; letter-spacing: 1.5px; }
+.lvl-diff { font-size: 11px; color: #fbbf24; font-weight: 700; letter-spacing: 1px; margin-top: 2px; }
+.lvl-desc { font-size: 12px; opacity: 0.8; margin-top: 6px; line-height: 1.4; }
+
 /* Horror tutorial overlay */
 .horror-tutorial {
   position: absolute; inset: 0; z-index: 200;

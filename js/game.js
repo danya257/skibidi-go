@@ -10,21 +10,32 @@ import { ACHIEVEMENTS, checkAchievements, SHOP_ITEMS, powerUpCost, canPowerUp, p
 import { getTier } from './models.js';
 import { startHorror, stopHorror } from './horror.js';
 
+let _selectedLevelId = 'basement';
 function enterHorror() {
   showScreen('horror-screen');
   const endEl = document.querySelector('.horror-end');
   if (endEl) endEl.classList.remove('show', 'dead', 'won');
   const tut = document.querySelector('.horror-tutorial');
+  if (tut) tut.classList.remove('show');
+  const sel = document.querySelector('.horror-level-select');
+  if (sel) sel.classList.add('show');
+}
+function pickHorrorLevel(id) {
+  _selectedLevelId = id;
+  const sel = document.querySelector('.horror-level-select');
+  if (sel) sel.classList.remove('show');
+  const tut = document.querySelector('.horror-tutorial');
   if (tut) tut.classList.add('show');
-  // don't start game yet — wait for tutorial dismissal
 }
 function startHorrorGame() {
   const tut = document.querySelector('.horror-tutorial');
   if (tut) tut.classList.remove('show');
-  setTimeout(() => startHorror(), 50);
+  setTimeout(() => startHorror(_selectedLevelId), 50);
 }
 function exitHorror() {
   stopHorror();
+  const sel = document.querySelector('.horror-level-select');
+  if (sel) sel.classList.remove('show');
   showScreen('map-screen');
 }
 function retryHorror() {
@@ -33,7 +44,11 @@ function retryHorror() {
   if (endEl) endEl.classList.remove('show', 'dead', 'won');
   const js = document.querySelector('.horror-jumpscare');
   if (js) js.classList.remove('active');
-  setTimeout(() => startHorror(), 100);
+  const sf = document.querySelector('.horror-scare-flash');
+  if (sf) sf.classList.remove('show');
+  // Back to level select instead of restarting same level
+  const sel = document.querySelector('.horror-level-select');
+  if (sel) sel.classList.add('show');
 }
 window._horrorReward = function(coins) {
   state.player.coins += coins;
@@ -43,6 +58,7 @@ window.enterHorror = enterHorror;
 window.exitHorror = exitHorror;
 window.retryHorror = retryHorror;
 window.startHorrorGame = startHorrorGame;
+window.pickHorrorLevel = pickHorrorLevel;
 
 function spawnDamageNumber(dmg, side, isCrit) {
   setTimeout(() => {

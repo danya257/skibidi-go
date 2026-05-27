@@ -2,17 +2,31 @@ import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { makeSmiler, animateSmiler, disposeMonster } from './horror_monsters.js';
 
 let horror = null;
-export function startHorror() { if (horror) return; horror = new HorrorGame(); }
+export function startHorror(levelId = 'basement') { if (horror) return; horror = new HorrorGame(levelId); }
 export function stopHorror() { if (horror) { horror.destroy(); horror = null; } }
+
+export const LEVELS = {
+  basement: {
+    id: 'basement', name: 'Подвал', icon: '🚪', difficulty: '★',
+    desc: 'Поверни 3 крана в порядке цифр',
+    monster: 'smiler',
+  },
+  sewer: {
+    id: 'sewer', name: 'Канализация', icon: '💧', difficulty: '★★',
+    desc: 'Открой 4 цветных вентиля в верном порядке',
+    monster: 'smiler',
+  },
+};
 
 const STATE_PLAY = 0, STATE_WIN = 1, STATE_DEAD = 2;
 
 class HorrorGame {
-  constructor() {
+  constructor(levelId = 'basement') {
     this.canvas = document.getElementById('horror-canvas');
+    this.levelId = levelId;
     this.state = STATE_PLAY;
-    this.valvesTurned = []; // ['V1','V2',...] in order they were turned
-    this.correctOrder = ['V1', 'V2', 'V3'];
+    this.valvesTurned = []; // in order they were turned
+    this.correctOrder = []; // set by level builder
     this.exitOpen = false;
     this.hasKey = false;
 
@@ -158,6 +172,53 @@ class HorrorGame {
   }
 
   initLevel() {
+    if (this.levelId === 'sewer') this._buildSewer();
+    else this._buildBasement();
+    this.screamerCooldown = 18 + Math.random() * 8;
+  }
+
+  _updateScreamers(dt) {
+    if (this.state !== STATE_PLAY) return;
+    this.screamerCooldown -= dt;
+    if (this.screamerCooldown > 0) return;
+    const types = ['flicker', 'whisper', 'bang', 'hiss', 'pipe'];
+    this._fireScreamer(types[Math.floor(Math.random() * types.length)]);
+    this.screamerCooldown = 14 + Math.random() * 16;
+  }
+
+  _fireScreamer(type) {
+    this.playScream(type);
+    const flash = document.querySelector('.horror-scare-flash');
+    const flashIt = () => {
+      if (!flash) return;
+      flash.classList.remove('show'); void flash.offsetWidth;
+      flash.classList.add('show');
+    };
+    if (type === 'flicker') {
+      if (this.bulbLight) {
+        const orig = this.bulbLight.intensity;
+        this.bulbLight.intensity = 0;
+        if (this.bulb) this.bulb.material.color.setHex(0x331100);
+        setTimeout(() => {
+          if (this.bulbLight) this.bulbLight.intensity = orig;
+          if (this.bulb) this.bulb.material.color.setHex(this.levelId === 'sewer' ? 0x88ffaa : 0xffeebb);
+        }, 400);
+      }
+      flashIt();
+    } else if (type === 'bang') {
+      this.jumpscareShake = 0.18;
+      flashIt();
+    } else if (type === 'whisper') {
+      this.jumpscareShake = 0.04;
+    } else if (type === 'hiss') {
+      flashIt();
+    } else if (type === 'pipe') {
+      this.jumpscareShake = 0.1;
+    }
+  }
+
+  _buildBasement() {
+    this.correctOrder = ['V1', 'V2', 'V3'];
     const tileMat = this.makeWallMat();
     const floorMat = this.makeFloorMat();
     const ceilMat = new THREE.MeshStandardMaterial({ color: 0x0a0808, roughness: 0.95 });
@@ -288,6 +349,287 @@ class HorrorGame {
 
     // Enemy spawn
     this.spawnEnemy();
+  }
+
+  _buildSewer() {
+    this.correctOrder = ['yellow', 'blue', 'red', 'green'];
+    const wallMat = this.makeBrickMat();
+    const floorMat = this.makeSewerFloorMat();
+    const ceilMat = new THREE.MeshStandardMaterial({ color: 0x080a08, roughness: 0.95 });
+
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(24, 24), floorMat);
+    floor.rotation.x = -Math.PI / 2; this.scene.add(floor);
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(24, 24), ceilMat);
+    ceil.rotation.x = Math.PI / 2; ceil.position.y = 3.2; this.scene.add(ceil);
+
+    this.wallBox(0, -12, 24, 0.4, wallMat);
+    this.wallBox(-6.8, 12, 10.4, 0.4, wallMat);
+    this.wallBox(6.8, 12, 10.4, 0.4, wallMat);
+    const lintelMat = new THREE.MeshStandardMaterial({ color: 0x101010, roughness: 0.7 });
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.5, 0.6), lintelMat);
+    lintel.position.set(0, 3.0, 12); this.scene.add(lintel);
+    this.wallBox(-12, 0, 0.4, 24, wallMat);
+    this.wallBox(12, 0, 0.4, 24, wallMat);
+
+    // Pipes along ceiling
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x383838, metalness: 0.75, roughness: 0.35 });
+    for (const z of [-8, -3, 3, 8]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 22, 14), pipeMat);
+      p.position.set(0, 2.85, z); p.rotation.z = Math.PI / 2;
+      this.scene.add(p);
+    }
+    // Vertical drop pipes
+    for (const [px, pz] of [[-8, 0], [8, 0], [0, -8]]) {
+      const v = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 2.6, 12), pipeMat);
+      v.position.set(px, 1.5, pz); this.scene.add(v);
+    }
+
+    // Central drain
+    const drainMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, metalness: 0.85, roughness: 0.4 });
+    const drainOut = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.06, 24), drainMat);
+    drainOut.position.set(0, 0.01, 0); this.scene.add(drainOut);
+    const drainIn = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.7, 0.55, 0.45, 24),
+      new THREE.MeshBasicMaterial({ color: 0x000000 })
+    );
+    drainIn.position.set(0, -0.18, 0); this.scene.add(drainIn);
+    for (let i = -2; i <= 2; i++) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.04, 0.07), drainMat);
+      bar.position.set(0, 0.05, i * 0.22); this.scene.add(bar);
+    }
+
+    // Green emergency lighting
+    for (const x of [-7, 7]) {
+      const cage = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.13, 0.13, 0.2, 12),
+        new THREE.MeshStandardMaterial({ color: 0x222, metalness: 0.8, roughness: 0.4, emissive: 0x113322, emissiveIntensity: 0.5 })
+      );
+      cage.position.set(x, 2.75, 0); this.scene.add(cage);
+      const ll = new THREE.PointLight(0x66ddaa, 0.7, 7, 2);
+      ll.position.set(x, 2.6, 0); this.scene.add(ll);
+    }
+    this.bulbLight = new THREE.PointLight(0x55cc88, 0.55, 9, 2);
+    this.bulbLight.position.set(0, 2.5, 0); this.scene.add(this.bulbLight);
+    this.bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 12), new THREE.MeshBasicMaterial({ color: 0x88ffaa }));
+    this.bulb.position.set(0, 2.6, 0); this.scene.add(this.bulb);
+
+    // 4 colored valves
+    this.addColorValve(-10, -8, 'yellow', 0xffcc33, 'ЖЁЛТЫЙ');
+    this.addColorValve(10, -8, 'blue', 0x3366ff, 'СИНИЙ');
+    this.addColorValve(-10, 8, 'red', 0xff3322, 'КРАСНЫЙ');
+    this.addColorValve(10, 8, 'green', 0x44cc44, 'ЗЕЛЁНЫЙ');
+
+    // Hint notes
+    this.addNote(0, 1.7, -11.7, 'ЖЁЛТЫЙ → СИНИЙ\nКРАСНЫЙ → ЗЕЛЁНЫЙ\nИначе всё с начала');
+    this.addNote(11.7, 1.7, 5, 'Не наступай в лужи.\nОни смотрят на тебя.');
+    this.addNote(-11.7, 1.7, 0, 'Если в трубе стучит —\nспрячься или беги.');
+
+    // Lore notes
+    this.addLoreNote(-7, 0, 'Канализация ниже подвала.\nЗдесь жили рабочие.\nТеперь — только воня и эхо.');
+    this.addLoreNote(7, -4, 'Стук в трубе =\nОНО уже знает\nгде ты.');
+    this.addLoreNote(0, 9, 'Не ходи по воде.\nОна не отражает свет.\nИ тебя — тоже.');
+    this.addLoreNote(-9, -3, 'Выход через коллектор.\nЦвета — это код.\nЯ почти добрался...');
+
+    // Exit door (green-tinted)
+    const doorMat = new THREE.MeshStandardMaterial({
+      color: 0x1a3a2a, roughness: 0.5, metalness: 0.6,
+      emissive: 0x0a1a10, emissiveIntensity: 0.6,
+    });
+    this.exitDoor = new THREE.Mesh(new THREE.BoxGeometry(3.0, 2.7, 0.3), doorMat);
+    this.exitDoor.position.set(0, 1.35, 12); this.scene.add(this.exitDoor);
+    const handle = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0xaa9933, metalness: 0.9, roughness: 0.3 })
+    );
+    handle.position.set(1.2, 1.4, 11.84); this.scene.add(handle);
+    this.exitDoorCol = { minX: -1.5, maxX: 1.5, minZ: 11.8, maxZ: 12.2 };
+    this.colliders.push(this.exitDoorCol);
+    this.exitZone = { minX: -1.5, maxX: 1.5, minZ: 11.5, maxZ: 12.5 };
+
+    // Green EXIT sign
+    const signCanvas = document.createElement('canvas');
+    signCanvas.width = 256; signCanvas.height = 96;
+    const sctx = signCanvas.getContext('2d');
+    sctx.fillStyle = '#000a00'; sctx.fillRect(0, 0, 256, 96);
+    sctx.fillStyle = '#22ff44'; sctx.font = 'bold 48px Arial';
+    sctx.textAlign = 'center'; sctx.textBaseline = 'middle';
+    sctx.fillText('ВЫХОД', 128, 48);
+    sctx.fillStyle = '#aaff66'; sctx.font = 'bold 26px Arial';
+    sctx.fillText('↓', 128, 84);
+    const signTex = new THREE.CanvasTexture(signCanvas);
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.6, 0.6),
+      new THREE.MeshBasicMaterial({ map: signTex, transparent: true })
+    );
+    sign.position.set(0, 2.65, 11.69); sign.rotation.y = Math.PI;
+    this.scene.add(sign);
+    this.exitLight = new THREE.PointLight(0x33ff66, 1.2, 6, 2);
+    this.exitLight.position.set(0, 2.7, 11.5); this.scene.add(this.exitLight);
+
+    // Floor arrow
+    const arrowCanvas = document.createElement('canvas');
+    arrowCanvas.width = arrowCanvas.height = 128;
+    const actx = arrowCanvas.getContext('2d');
+    actx.clearRect(0, 0, 128, 128);
+    actx.fillStyle = '#44ff66';
+    actx.beginPath();
+    actx.moveTo(64, 110); actx.lineTo(20, 50); actx.lineTo(50, 50);
+    actx.lineTo(50, 18); actx.lineTo(78, 18); actx.lineTo(78, 50);
+    actx.lineTo(108, 50); actx.closePath(); actx.fill();
+    const arrowTex = new THREE.CanvasTexture(arrowCanvas);
+    this.exitArrow = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.2, 1.2),
+      new THREE.MeshBasicMaterial({ map: arrowTex, transparent: true, depthWrite: false })
+    );
+    this.exitArrow.rotation.x = -Math.PI / 2; this.exitArrow.rotation.z = Math.PI;
+    this.exitArrow.position.set(0, 0.02, 10); this.scene.add(this.exitArrow);
+
+    this.spawnEnemy();
+    // Greenish fog tint
+    if (this.scene.fog) this.scene.fog.color.setHex(0x041008);
+  }
+
+  addColorValve(x, z, id, colorHex, label) {
+    const group = new THREE.Group();
+    const pipeMat = new THREE.MeshStandardMaterial({ color: 0x404040, metalness: 0.8, roughness: 0.3 });
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.6, 16), pipeMat);
+    if (Math.abs(x) > Math.abs(z)) {
+      pipe.rotation.z = Math.PI / 2;
+      pipe.position.x = x > 0 ? -0.3 : 0.3;
+    } else {
+      pipe.rotation.x = Math.PI / 2;
+      pipe.position.z = z > 0 ? -0.3 : 0.3;
+    }
+    group.add(pipe);
+    const wheelMat = new THREE.MeshStandardMaterial({
+      color: colorHex, roughness: 0.35, metalness: 0.6,
+      emissive: colorHex, emissiveIntensity: 0.35,
+    });
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.05, 8, 18), wheelMat);
+    group.add(wheel);
+    for (let i = 0; i < 4; i++) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.04, 0.04), wheelMat);
+      spoke.rotation.z = (i / 4) * Math.PI;
+      group.add(spoke);
+    }
+    if (Math.abs(x) > Math.abs(z)) {
+      group.children.slice(1).forEach(c => { c.rotation.y = Math.PI / 2; });
+    }
+    group.position.set(x * 0.97, 1.3, z * 0.97);
+    this.scene.add(group);
+
+    // Halo light at valve color
+    const ll = new THREE.PointLight(colorHex, 0.6, 2.4, 2);
+    ll.position.set(x * 0.85, 1.4, z * 0.85);
+    this.scene.add(ll);
+
+    // Label plate
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 80;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, 256, 80);
+    const cssColor = '#' + colorHex.toString(16).padStart(6, '0');
+    ctx.fillStyle = cssColor;
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 5;
+    ctx.font = 'bold 32px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeText(label, 128, 40); ctx.fillText(label, 128, 40);
+    const labelTex = new THREE.CanvasTexture(c);
+    const plate = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.9, 0.28),
+      new THREE.MeshBasicMaterial({ map: labelTex, transparent: true })
+    );
+    plate.position.set(x * 0.96, 2.0, z * 0.96);
+    if (Math.abs(x) > Math.abs(z)) plate.rotation.y = x > 0 ? -Math.PI / 2 : Math.PI / 2;
+    else if (z < 0) plate.rotation.y = Math.PI;
+    this.scene.add(plate);
+
+    this.interactables.push({
+      pos: new THREE.Vector3(x * 0.85, 1.3, z * 0.85),
+      radius: 1.5, label: `Открыть ${label}`,
+      mesh: group, turned: false,
+      onUse: () => {
+        const it = this.interactables.find(i => i.mesh === group);
+        if (it.turned) return;
+        it.turned = true;
+        this.playValveTurn();
+        let spin = 0;
+        const spinAnim = () => {
+          spin += 0.2;
+          if (Math.abs(x) > Math.abs(z)) group.children.forEach(c => { c.rotation.x = spin; });
+          else group.children.forEach(c => { c.rotation.z = spin; });
+          if (spin < Math.PI * 2) requestAnimationFrame(spinAnim);
+        };
+        spinAnim();
+        wheelMat.emissive.setHex(0xffffff);
+        wheelMat.emissiveIntensity = 0.9;
+        this.valvesTurned.push(id);
+        this.checkValveOrder();
+      },
+    });
+  }
+
+  makeBrickMat() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0a0a08'; ctx.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 8; y++) {
+      const offset = y % 2 ? 32 : 0;
+      for (let x = -1; x < 8; x++) {
+        const bx = x * 64 + offset; const by = y * 32;
+        const shade = 22 + Math.floor(Math.random() * 26);
+        ctx.fillStyle = `rgb(${shade + 5},${shade},${Math.max(0, shade - 3)})`;
+        ctx.fillRect(bx + 2, by + 2, 60, 28);
+        if (Math.random() < 0.35) {
+          ctx.fillStyle = `rgba(40,70,30,${Math.random() * 0.45})`;
+          ctx.fillRect(bx + 2 + Math.random() * 40, by + 2 + Math.random() * 16, 16, 12);
+        }
+        if (Math.random() < 0.4) {
+          ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.5})`;
+          ctx.fillRect(bx + 2 + Math.random() * 50, by + 2 + Math.random() * 20, 4, 4);
+        }
+      }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 1);
+    return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92, metalness: 0.05 });
+  }
+
+  makeSewerFloorMat() {
+    const c = document.createElement('canvas');
+    c.width = c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0a1010'; ctx.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 4000; i++) {
+      const v = Math.random() * 22;
+      ctx.fillStyle = `rgba(${v + 8},${v + 14},${v + 10},0.5)`;
+      ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+    }
+    for (let i = 0; i < 6; i++) {
+      const px = Math.random() * 256, py = Math.random() * 256;
+      const grad = ctx.createRadialGradient(px, py, 0, px, py, 30 + Math.random() * 20);
+      grad.addColorStop(0, 'rgba(30,90,60,0.65)');
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.fillRect(px - 50, py - 50, 100, 100);
+    }
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      let x = Math.random() * 256, y = Math.random() * 256;
+      ctx.moveTo(x, y);
+      for (let j = 0; j < 8; j++) {
+        x += (Math.random() - 0.5) * 50; y += (Math.random() - 0.5) * 50;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 6);
+    return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7, metalness: 0.2 });
   }
 
   addValve(x, z, id, number) {
@@ -475,6 +817,66 @@ class HorrorGame {
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
     osc.connect(g).connect(master);
     osc.start(); osc.stop(ctx.currentTime + 0.42);
+  }
+
+  playScream(type) {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    if (type === 'bang') {
+      const buf = ctx.createBuffer(1, ctx.sampleRate * 0.18, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.max(0, 1 - i / d.length * 2);
+      const noise = ctx.createBufferSource(); noise.buffer = buf;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 350;
+      const g = ctx.createGain(); g.gain.value = 0.75;
+      noise.connect(lp).connect(g).connect(master); noise.start();
+      const sub = ctx.createOscillator(); sub.type = 'sine';
+      sub.frequency.setValueAtTime(85, ctx.currentTime);
+      sub.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + 0.3);
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.55, ctx.currentTime);
+      sg.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      sub.connect(sg).connect(master); sub.start(); sub.stop(ctx.currentTime + 0.45);
+    } else if (type === 'whisper') {
+      const wbuf = ctx.createBuffer(1, ctx.sampleRate * 1.4, ctx.sampleRate);
+      const wd = wbuf.getChannelData(0);
+      let prev = 0;
+      for (let i = 0; i < wd.length; i++) { prev = 0.9 * prev + 0.1 * (Math.random() * 2 - 1); wd[i] = prev * 0.6; }
+      const wnoise = ctx.createBufferSource(); wnoise.buffer = wbuf;
+      const wbp = ctx.createBiquadFilter(); wbp.type = 'bandpass'; wbp.frequency.value = 1100; wbp.Q.value = 6;
+      const wg = ctx.createGain();
+      wg.gain.setValueAtTime(0, ctx.currentTime);
+      wg.gain.linearRampToValueAtTime(0.45, ctx.currentTime + 0.15);
+      wg.gain.linearRampToValueAtTime(0.45, ctx.currentTime + 1.1);
+      wg.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.4);
+      wnoise.connect(wbp).connect(wg).connect(master); wnoise.start();
+    } else if (type === 'flicker') {
+      const osc = ctx.createOscillator(); osc.type = 'square'; osc.frequency.value = 110;
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.25, ctx.currentTime);
+      og.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.connect(og).connect(master);
+      osc.start(); osc.stop(ctx.currentTime + 0.35);
+    } else if (type === 'hiss') {
+      const hbuf = ctx.createBuffer(1, ctx.sampleRate * 0.5, ctx.sampleRate);
+      const hd = hbuf.getChannelData(0);
+      for (let i = 0; i < hd.length; i++) hd[i] = (Math.random() * 2 - 1) * Math.max(0, 1 - i / hd.length);
+      const hn = ctx.createBufferSource(); hn.buffer = hbuf;
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 3500;
+      const hg = ctx.createGain(); hg.gain.value = 0.4;
+      hn.connect(hp).connect(hg).connect(master); hn.start();
+    } else if (type === 'pipe') {
+      // Metal pipe clang
+      const osc = ctx.createOscillator(); osc.type = 'square';
+      osc.frequency.setValueAtTime(580, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.5);
+      const og = ctx.createGain();
+      og.gain.setValueAtTime(0.4, ctx.currentTime);
+      og.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 800; bp.Q.value = 3;
+      osc.connect(bp).connect(og).connect(master);
+      osc.start(); osc.stop(ctx.currentTime + 0.65);
+    }
   }
 
   checkValveOrder() {
@@ -899,6 +1301,7 @@ class HorrorGame {
   }
 
   update(dt) {
+    this._updateScreamers(dt);
     if (this.state !== STATE_PLAY) return;
 
     // PC input

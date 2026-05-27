@@ -124,7 +124,30 @@
     <div class="horror-joy"><div class="horror-joy-dot"></div></div>
     <div class="horror-look"></div>
     <button class="horror-interact">⊕</button>
+    <div class="horror-scare-flash"></div>
     <div class="horror-jumpscare"></div>
+    <div class="horror-level-select show">
+      <div class="lvl-content">
+        <div class="lvl-title">💀 ВЫБЕРИ УРОВЕНЬ</div>
+        <button class="lvl-card" onclick="pickHorrorLevel('basement')">
+          <div class="lvl-icon">🚪</div>
+          <div class="lvl-info">
+            <div class="lvl-name">Подвал</div>
+            <div class="lvl-diff">★ · Лёгкий</div>
+            <div class="lvl-desc">Поверни 3 крана в порядке цифр 1→2→3</div>
+          </div>
+        </button>
+        <button class="lvl-card hard" onclick="pickHorrorLevel('sewer')">
+          <div class="lvl-icon">💧</div>
+          <div class="lvl-info">
+            <div class="lvl-name">Канализация</div>
+            <div class="lvl-diff">★★ · Сложно</div>
+            <div class="lvl-desc">Открой 4 цветных вентиля в верном порядке</div>
+          </div>
+        </button>
+        <button class="big-btn flee" onclick="exitHorror()">← На карту</button>
+      </div>
+    </div>
     <div class="horror-end">
       <div class="horror-end-title">★</div>
       <div class="horror-end-text"></div>
