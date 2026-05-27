@@ -199,9 +199,9 @@ class HorrorGame {
     this.addValve(-10, 8, 'V3', 3);
 
     // Hint notes on walls
-    this.addNote(0, -11.7, 0, 'Поверни вентили\nв порядке цифр\nна стене над ними');
-    this.addNote(10, 0, 11.7, 'Если ошибёшься —\nначни сначала');
-    this.addNote(-10, 1.7, 0, '...а ОНО\nне любит свет');
+    this.addNote(0, 1.7, -11.7, 'Поверни вентили\nв порядке цифр\nна стене над ними');
+    this.addNote(11.7, 1.7, 5, 'Если ошибёшься —\nначни сначала');
+    this.addNote(-11.7, 1.7, 0, '...а ОНО\nне любит свет');
 
     // Exit door (locked initially)
     const doorMat = new THREE.MeshStandardMaterial({ color: 0x402010, roughness: 0.8 });
@@ -319,11 +319,15 @@ class HorrorGame {
       new THREE.PlaneGeometry(0.7, 0.55),
       new THREE.MeshStandardMaterial({ map: tex, side: THREE.DoubleSide, roughness: 0.9 })
     );
-    note.position.set(x * 0.97, y, z * 0.97);
-    if (z === -12 || z === -11.7) { note.rotation.y = Math.PI; note.position.z = -11.7; }
-    if (z === 12 || z === 11.7) { note.position.z = 11.7; }
-    if (x === -10) { note.rotation.y = Math.PI / 2; note.position.x = -11.7; }
-    if (x === 10) { note.rotation.y = -Math.PI / 2; note.position.x = 11.7; }
+    note.position.set(x, y, z);
+    // Auto-orient based on which wall is closer
+    if (Math.abs(x) > Math.abs(z)) {
+      note.rotation.y = x > 0 ? -Math.PI / 2 : Math.PI / 2;
+      note.position.x = Math.sign(x) * 11.7;
+    } else {
+      note.rotation.y = z > 0 ? 0 : Math.PI;
+      note.position.z = Math.sign(z || 1) * 11.7;
+    }
     this.scene.add(note);
   }
 
@@ -499,7 +503,7 @@ class HorrorGame {
     const ppos = this.player.pos;
     const forward = new THREE.Vector3(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw));
     for (const it of this.interactables) {
-      if (it.taken) continue;
+      if (it.taken || it.turned) continue;
       const dx = it.pos.x - ppos.x;
       const dz = it.pos.z - ppos.z;
       const d = Math.hypot(dx, dz);
