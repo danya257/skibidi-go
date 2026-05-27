@@ -166,8 +166,14 @@ class HorrorGame {
     this.scene.add(ceil);
 
     // Outer walls (sizes: width along axis × thickness)
-    this.wallBox(0, -12, 24, 0.4, tileMat); // north wall
-    this.wallBox(0, 12, 24, 0.4, tileMat);  // south wall (door here)
+    this.wallBox(0, -12, 24, 0.4, tileMat); // north wall (full)
+    // South wall has a gap for the exit door (gap from x=-1.6 to x=1.6)
+    this.wallBox(-6.8, 12, 10.4, 0.4, tileMat);  // south-left
+    this.wallBox(6.8, 12, 10.4, 0.4, tileMat);   // south-right
+    // Door frame top (lintel)
+    const lintelMat = new THREE.MeshStandardMaterial({ color: 0x2a1a0a, roughness: 0.7 });
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.5, 0.6), lintelMat);
+    lintel.position.set(0, 3.0, 12); this.scene.add(lintel);
     this.wallBox(-12, 0, 0.4, 24, tileMat); // west
     this.wallBox(12, 0, 0.4, 24, tileMat);  // east
 
@@ -206,16 +212,69 @@ class HorrorGame {
     this.addNote(11.7, 1.7, 5, 'Если ошибёшься —\nначни сначала');
     this.addNote(-11.7, 1.7, 0, '...а ОНО\nне любит свет');
 
-    // Exit door (locked initially)
-    const doorMat = new THREE.MeshStandardMaterial({ color: 0x402010, roughness: 0.8 });
-    this.exitDoor = new THREE.Mesh(new THREE.BoxGeometry(2.2, 3, 0.2), doorMat);
-    this.exitDoor.position.set(0, 1.5, 11.99);
+    // Exit door (locked initially) — fills the gap in the south wall
+    const doorMat = new THREE.MeshStandardMaterial({
+      color: 0x5a2a10, roughness: 0.5, metalness: 0.3,
+      emissive: 0x331100, emissiveIntensity: 0.5,
+    });
+    this.exitDoor = new THREE.Mesh(new THREE.BoxGeometry(3.0, 2.7, 0.3), doorMat);
+    this.exitDoor.position.set(0, 1.35, 12);
     this.scene.add(this.exitDoor);
+    // Door handle
+    const handle = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0xddcc44, metalness: 0.9, roughness: 0.2 })
+    );
+    handle.position.set(1.2, 1.4, 11.84); this.scene.add(handle);
     // door collider
-    this.exitDoorCol = { minX: -1.1, maxX: 1.1, minZ: 11.9, maxZ: 12.1 };
+    this.exitDoorCol = { minX: -1.5, maxX: 1.5, minZ: 11.8, maxZ: 12.2 };
     this.colliders.push(this.exitDoorCol);
     // Exit zone (when door open, walking into this wins)
-    this.exitZone = { minX: -1.1, maxX: 1.1, minZ: 11.7, maxZ: 12.3 };
+    this.exitZone = { minX: -1.5, maxX: 1.5, minZ: 11.5, maxZ: 12.5 };
+
+    // EXIT sign above door (glowing red)
+    const signCanvas = document.createElement('canvas');
+    signCanvas.width = 256; signCanvas.height = 96;
+    const sctx = signCanvas.getContext('2d');
+    sctx.fillStyle = '#0a0000'; sctx.fillRect(0, 0, 256, 96);
+    sctx.fillStyle = '#ff2200';
+    sctx.font = 'bold 48px Arial';
+    sctx.textAlign = 'center'; sctx.textBaseline = 'middle';
+    sctx.fillText('ВЫХОД', 128, 48);
+    sctx.fillStyle = '#ffaa00';
+    sctx.font = 'bold 26px Arial';
+    sctx.fillText('↓', 128, 84);
+    const signTex = new THREE.CanvasTexture(signCanvas);
+    const signMat = new THREE.MeshBasicMaterial({ map: signTex, transparent: true });
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.6), signMat);
+    sign.position.set(0, 2.65, 11.69); sign.rotation.y = Math.PI;
+    this.scene.add(sign);
+    // Glowing light above door
+    const exitLight = new THREE.PointLight(0xff3300, 1.2, 6, 2);
+    exitLight.position.set(0, 2.7, 11.5);
+    this.scene.add(exitLight);
+    this.exitLight = exitLight;
+
+    // Floor arrow pointing to door
+    const arrowCanvas = document.createElement('canvas');
+    arrowCanvas.width = arrowCanvas.height = 128;
+    const actx = arrowCanvas.getContext('2d');
+    actx.fillStyle = 'rgba(0,0,0,0)'; actx.fillRect(0, 0, 128, 128);
+    actx.fillStyle = '#ff4422';
+    actx.beginPath();
+    actx.moveTo(64, 110); actx.lineTo(20, 50); actx.lineTo(50, 50);
+    actx.lineTo(50, 18); actx.lineTo(78, 18); actx.lineTo(78, 50);
+    actx.lineTo(108, 50); actx.closePath(); actx.fill();
+    const arrowTex = new THREE.CanvasTexture(arrowCanvas);
+    const arrow = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.2, 1.2),
+      new THREE.MeshBasicMaterial({ map: arrowTex, transparent: true, depthWrite: false })
+    );
+    arrow.rotation.x = -Math.PI / 2;
+    arrow.rotation.z = Math.PI; // point south (+Z)
+    arrow.position.set(0, 0.02, 10);
+    this.scene.add(arrow);
+    this.exitArrow = arrow;
 
     // Enemy spawn
     this.spawnEnemy();
@@ -856,13 +915,121 @@ class HorrorGame {
   }
 
   die() {
+    if (this.state !== STATE_PLAY) return;
     this.state = STATE_DEAD;
-    this.playLose();
     this.stopAmbient();
-    const overlay = document.querySelector('.horror-end');
-    overlay.classList.add('show'); overlay.classList.add('dead');
-    overlay.querySelector('.horror-end-title').textContent = '💀 ПОЙМАН';
-    overlay.querySelector('.horror-end-text').textContent = 'Скибиди затащил тебя в унитаз...';
+    // JUMPSCARE: snap enemy into camera face
+    if (this.enemy) {
+      const fx = -Math.sin(this.player.yaw), fz = -Math.cos(this.player.yaw);
+      this.enemy.position.set(
+        this.player.pos.x + fx * 0.7,
+        this.player.pos.y - 0.4,
+        this.player.pos.z + fz * 0.7
+      );
+      this.enemy.scale.setScalar(2.8);
+      this.enemy.rotation.y = this.player.yaw + Math.PI;
+      // make head/eyes glow brighter
+      this.enemy.traverse(o => {
+        if (o.material?.color?.getHex && o.material.color.getHex() === 0xff0000) {
+          o.material = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+        }
+      });
+    }
+    // Brighten flashlight to white-out then fade
+    if (this.flash) this.flash.intensity = 30;
+    // Hard camera shake
+    this.jumpscareShake = 0.6;
+    // Red strobe overlay
+    const flash = document.querySelector('.horror-jumpscare');
+    if (flash) { flash.classList.remove('active'); void flash.offsetWidth; flash.classList.add('active'); }
+    // LOUD scream
+    this.playJumpscare();
+    // After delay → death screen
+    setTimeout(() => {
+      const overlay = document.querySelector('.horror-end');
+      if (overlay) {
+        overlay.classList.add('show', 'dead');
+        overlay.querySelector('.horror-end-title').textContent = '💀 ПОЙМАН';
+        overlay.querySelector('.horror-end-text').textContent = 'Скибиди затащил тебя в унитаз...';
+      }
+    }, 1400);
+  }
+  playJumpscare() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    // Boost master briefly
+    const orig = master.gain.value;
+    master.gain.setValueAtTime(1.0, ctx.currentTime);
+    setTimeout(() => { if (this.audio) master.gain.setValueAtTime(orig, ctx.currentTime); }, 1500);
+
+    // 1. Heavy sub-impact (BOOM)
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(220, ctx.currentTime);
+    sub.frequency.exponentialRampToValueAtTime(24, ctx.currentTime + 0.5);
+    const subG = ctx.createGain();
+    subG.gain.setValueAtTime(0.95, ctx.currentTime);
+    subG.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+    sub.connect(subG).connect(master);
+    sub.start(); sub.stop(ctx.currentTime + 0.75);
+
+    // 2. White-noise smack (very loud, brief)
+    const nb = ctx.createBuffer(1, ctx.sampleRate * 0.4, ctx.sampleRate);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) {
+      const env = Math.max(0, 1 - (i / nd.length) * 2.2);
+      nd[i] = (Math.random() * 2 - 1) * env;
+    }
+    const noise = ctx.createBufferSource(); noise.buffer = nb;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 600;
+    const ng = ctx.createGain(); ng.gain.value = 0.85;
+    noise.connect(hp).connect(ng).connect(master);
+    noise.start();
+
+    // 3. Heavily distorted multi-osc scream — stack of sawtooths with vibrato
+    const dist = ctx.createWaveShaper();
+    const curve = new Float32Array(512);
+    for (let i = 0; i < 512; i++) {
+      const x = (i / 256) - 1;
+      curve[i] = Math.tanh(x * 12);
+    }
+    dist.curve = curve;
+    dist.oversample = '4x';
+    const screamG = ctx.createGain();
+    screamG.gain.setValueAtTime(0, ctx.currentTime);
+    screamG.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 0.05);
+    screamG.gain.setValueAtTime(0.55, ctx.currentTime + 0.9);
+    screamG.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.4);
+    dist.connect(screamG).connect(master);
+    for (const detune of [-25, -8, 7, 22]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(380, ctx.currentTime + 0.04);
+      osc.frequency.linearRampToValueAtTime(900, ctx.currentTime + 0.3);
+      osc.frequency.linearRampToValueAtTime(420, ctx.currentTime + 0.7);
+      osc.frequency.linearRampToValueAtTime(160, ctx.currentTime + 1.3);
+      osc.detune.value = detune;
+      const vib = ctx.createOscillator();
+      vib.type = 'sine'; vib.frequency.value = 22;
+      const vibG = ctx.createGain(); vibG.gain.value = 110;
+      vib.connect(vibG).connect(osc.frequency);
+      osc.connect(dist);
+      vib.start(); osc.start();
+      vib.stop(ctx.currentTime + 1.4); osc.stop(ctx.currentTime + 1.4);
+    }
+  }
+  jumpscareUpdate() {
+    if (this.jumpscareShake > 0) {
+      const s = this.jumpscareShake;
+      this.camera.position.x = this.player.pos.x + (Math.random() - 0.5) * s;
+      this.camera.position.y = this.player.pos.y + (Math.random() - 0.5) * s;
+      this.camera.position.z = this.player.pos.z + (Math.random() - 0.5) * s;
+      // wobble rotation too
+      this.camera.rotation.x = this.player.pitch + (Math.random() - 0.5) * s * 0.5;
+      this.camera.rotation.z = (Math.random() - 0.5) * s * 0.5;
+      this.jumpscareShake *= 0.93;
+      if (this.jumpscareShake < 0.01) this.jumpscareShake = 0;
+    }
   }
   win() {
     this.state = STATE_WIN;
@@ -880,6 +1047,14 @@ class HorrorGame {
     const dt = Math.min(0.1, (now - this.lastTime) / 1000);
     this.lastTime = now;
     this.update(dt);
+    if (this.state === STATE_DEAD) this.jumpscareUpdate();
+    if (this.exitLight) {
+      this.exitLight.intensity = 1.0 + Math.sin(performance.now() * 0.005) * 0.5;
+    }
+    if (this.exitArrow) {
+      this.exitArrow.material.opacity = 0.5 + Math.sin(performance.now() * 0.006) * 0.4;
+      this.exitArrow.material.transparent = true;
+    }
     this.renderer.render(this.scene, this.camera);
     this.raf = requestAnimationFrame(this.loopFn);
   }

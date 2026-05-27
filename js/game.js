@@ -31,6 +31,8 @@ function retryHorror() {
   stopHorror();
   const endEl = document.querySelector('.horror-end');
   if (endEl) endEl.classList.remove('show', 'dead', 'won');
+  const js = document.querySelector('.horror-jumpscare');
+  if (js) js.classList.remove('active');
   setTimeout(() => startHorror(), 100);
 }
 window._horrorReward = function(coins) {

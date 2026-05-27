@@ -870,6 +870,28 @@ body.ar-on #battle-screen { background: linear-gradient(180deg, rgba(0,0,0,0.55)
 }
 .horror-end-buttons { display: flex; gap: 12px; }
 
+/* Jumpscare red strobe */
+.horror-jumpscare {
+  position: absolute; inset: 0; z-index: 50;
+  background: radial-gradient(circle at center, rgba(255,0,0,0.85), rgba(60,0,0,0.98));
+  pointer-events: none; display: none; mix-blend-mode: screen;
+}
+.horror-jumpscare.active {
+  display: block;
+  animation: jumpscareStrobe 1.4s steps(8, end) forwards;
+}
+@keyframes jumpscareStrobe {
+  0% { opacity: 0; }
+  3% { opacity: 1; }
+  10% { opacity: 0.2; }
+  18% { opacity: 1; }
+  25% { opacity: 0.3; }
+  35% { opacity: 1; }
+  50% { opacity: 0.6; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* Horror tutorial overlay */
 .horror-tutorial {
   position: absolute; inset: 0; z-index: 200;
