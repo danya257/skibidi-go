@@ -13,7 +13,14 @@ import { startHorror, stopHorror } from './horror.js';
 function enterHorror() {
   showScreen('horror-screen');
   const endEl = document.querySelector('.horror-end');
-  if (endEl) { endEl.classList.remove('show', 'dead', 'won'); }
+  if (endEl) endEl.classList.remove('show', 'dead', 'won');
+  const tut = document.querySelector('.horror-tutorial');
+  if (tut) tut.classList.add('show');
+  // don't start game yet — wait for tutorial dismissal
+}
+function startHorrorGame() {
+  const tut = document.querySelector('.horror-tutorial');
+  if (tut) tut.classList.remove('show');
   setTimeout(() => startHorror(), 50);
 }
 function exitHorror() {
@@ -33,6 +40,7 @@ window._horrorReward = function(coins) {
 window.enterHorror = enterHorror;
 window.exitHorror = exitHorror;
 window.retryHorror = retryHorror;
+window.startHorrorGame = startHorrorGame;
 
 function spawnDamageNumber(dmg, side, isCrit) {
   setTimeout(() => {

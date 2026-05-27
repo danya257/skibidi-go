@@ -18,7 +18,7 @@ class HorrorGame {
 
     this.player = {
       pos: new THREE.Vector3(0, 1.65, 8),
-      yaw: Math.PI, pitch: 0,
+      yaw: 0, pitch: 0,
       vel: new THREE.Vector3(),
       bobT: 0,
     };
@@ -36,6 +36,9 @@ class HorrorGame {
     this.initScene();
     this.initLevel();
     this.initControls();
+    this.initAudio();
+    this.lastStepT = 0;
+    this.lastBeatT = 0;
     this.updateHUD();
     this.lastTime = performance.now();
     this.loopFn = this.loop.bind(this);
@@ -280,11 +283,12 @@ class HorrorGame {
       onUse: () => {
         if (this.interactables.find(i => i.mesh === group).turned) return;
         this.interactables.find(i => i.mesh === group).turned = true;
+        this.playValveTurn();
         // animate spin
         let spin = 0;
         const spinAnim = () => {
           spin += 0.2;
-          if (Math.abs(x) > Math.abs(z)) group.children.forEach(c => { if (c !== group.children[0] || true) c.rotation.x = spin; });
+          if (Math.abs(x) > Math.abs(z)) group.children.forEach(c => { c.rotation.x = spin; });
           else group.children.forEach(c => { c.rotation.z = spin; });
           if (spin < Math.PI * 2) requestAnimationFrame(spinAnim);
         };
@@ -350,6 +354,7 @@ class HorrorGame {
     const n = this.valvesTurned.length;
     if (this.valvesTurned[n - 1] !== this.correctOrder[n - 1]) {
       // wrong order — reset
+      this.playWrong();
       this.toast('НЕВЕРНЫЙ ПОРЯДОК. Сбрасываю...');
       setTimeout(() => this.resetValves(), 1200);
       return;
@@ -372,6 +377,7 @@ class HorrorGame {
   }
   openExit() {
     this.exitOpen = true;
+    this.playDoorOpen();
     this.toast('★ ДВЕРЬ ОТКРЫЛАСЬ ★');
     // remove door collider, slide door up
     this.colliders = this.colliders.filter(c => c !== this.exitDoorCol);
@@ -501,16 +507,15 @@ class HorrorGame {
   getInteractTarget() {
     let best = null, bestDist = Infinity;
     const ppos = this.player.pos;
-    const forward = new THREE.Vector3(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw));
+    const fx = -Math.sin(this.player.yaw), fz = -Math.cos(this.player.yaw);
     for (const it of this.interactables) {
       if (it.taken || it.turned) continue;
       const dx = it.pos.x - ppos.x;
       const dz = it.pos.z - ppos.z;
       const d = Math.hypot(dx, dz);
       if (d > it.radius) continue;
-      // Check angle within ~60° of forward
-      const dot = (dx * forward.x + dz * forward.z) / d;
-      if (dot < 0.3) continue;
+      const dot = (dx * fx + dz * fz) / d;
+      if (dot < 0.2) continue;
       if (d < bestDist) { best = it; bestDist = d; }
     }
     return best;
@@ -537,6 +542,219 @@ class HorrorGame {
     this._toastT = setTimeout(() => t.classList.remove('show'), 2000);
   }
 
+  /* ============== AUDIO ============== */
+  initAudio() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const master = ctx.createGain();
+      master.gain.value = 0.5;
+      master.connect(ctx.destination);
+      this.audio = { ctx, master };
+      // Resume on first touch (iOS)
+      const resume = () => { ctx.resume(); document.removeEventListener('touchstart', resume); document.removeEventListener('click', resume); };
+      document.addEventListener('touchstart', resume);
+      document.addEventListener('click', resume);
+      this.startAmbient();
+    } catch (e) { this.audio = null; }
+  }
+  startAmbient() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    const ambGain = ctx.createGain();
+    ambGain.gain.value = 0.18;
+    ambGain.connect(master);
+    // Low drone
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sine'; osc1.frequency.value = 55;
+    osc1.connect(ambGain);
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sawtooth'; osc2.frequency.value = 82.5;
+    const osc2Gain = ctx.createGain(); osc2Gain.gain.value = 0.12;
+    osc2.connect(osc2Gain).connect(ambGain);
+    // Slow detune wobble
+    const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.13;
+    const lfoGain = ctx.createGain(); lfoGain.gain.value = 25;
+    lfo.connect(lfoGain).connect(osc2.detune);
+    // Pink-ish noise
+    const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+    const nd = noiseBuf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < nd.length; i++) { last = 0.95 * last + 0.05 * (Math.random() * 2 - 1); nd[i] = last * 0.7; }
+    const noise = ctx.createBufferSource();
+    noise.buffer = noiseBuf; noise.loop = true;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 280;
+    const noiseGain = ctx.createGain(); noiseGain.gain.value = 0.35;
+    noise.connect(lp).connect(noiseGain).connect(ambGain);
+    osc1.start(); osc2.start(); lfo.start(); noise.start();
+    this.audio.ambient = { ambGain, nodes: [osc1, osc2, lfo, noise] };
+  }
+  stopAmbient() {
+    if (!this.audio?.ambient) return;
+    try { this.audio.ambient.nodes.forEach(n => n.stop()); } catch(e) {}
+    this.audio.ambient = null;
+  }
+  playValveTurn() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(900, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(160, ctx.currentTime + 0.7);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.001, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 1200; bp.Q.value = 4;
+    osc.connect(bp).connect(g).connect(master);
+    osc.start(); osc.stop(ctx.currentTime + 0.9);
+  }
+  playWrong() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(280, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.65);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.22, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+    osc.connect(g).connect(master);
+    osc.start(); osc.stop(ctx.currentTime + 0.75);
+  }
+  playDoorOpen() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    // sub rumble
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle'; osc.frequency.value = 45;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.3);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.2);
+    osc.connect(g).connect(master);
+    // metallic creak
+    const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1) * 0.4;
+    const noise = ctx.createBufferSource(); noise.buffer = nb;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.Q.value = 6;
+    bp.frequency.setValueAtTime(2400, ctx.currentTime);
+    bp.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 1.8);
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0, ctx.currentTime);
+    g2.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.2);
+    g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2);
+    noise.connect(bp).connect(g2).connect(master);
+    osc.start(); noise.start();
+    osc.stop(ctx.currentTime + 2.3); noise.stop(ctx.currentTime + 2);
+  }
+  playWin() {
+    if (!this.audio) return;
+    const notes = [261.6, 329.6, 392.0, 523.2, 659.2];
+    notes.forEach((freq, i) => {
+      setTimeout(() => {
+        const { ctx, master } = this.audio;
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle'; osc.frequency.value = freq;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.22, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+        osc.connect(g).connect(master);
+        osc.start(); osc.stop(ctx.currentTime + 0.6);
+      }, i * 140);
+    });
+  }
+  playLose() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    // sub-impact
+    const osc1 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(140, ctx.currentTime);
+    osc1.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + 0.5);
+    const g1 = ctx.createGain();
+    g1.gain.setValueAtTime(0.55, ctx.currentTime);
+    g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc1.connect(g1).connect(master);
+    osc1.start(); osc1.stop(ctx.currentTime + 0.65);
+    // growl with distortion
+    setTimeout(() => this.playSkibidiScream(), 200);
+  }
+  playSkibidiScream() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(380, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(180, ctx.currentTime + 0.9);
+    // vibrato
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 7;
+    const vibGain = ctx.createGain();
+    vibGain.gain.value = 70;
+    vib.connect(vibGain).connect(osc.frequency);
+    // distortion
+    const dist = ctx.createWaveShaper();
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const x = (i / 128) - 1;
+      curve[i] = Math.tanh(x * 4);
+    }
+    dist.curve = curve;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, ctx.currentTime);
+    g.gain.linearRampToValueAtTime(0.32, ctx.currentTime + 0.04);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1);
+    osc.connect(dist).connect(g).connect(master);
+    osc.start(); vib.start();
+    osc.stop(ctx.currentTime + 1.05); vib.stop(ctx.currentTime + 1.05);
+  }
+  playFootstep() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.13, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) {
+      const env = Math.max(0, 1 - (i / d.length) * 4);
+      d[i] = (Math.random() * 2 - 1) * env * 0.7;
+    }
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 600;
+    const g = ctx.createGain(); g.gain.value = 0.08;
+    src.connect(lp).connect(g).connect(master);
+    src.start();
+  }
+  playHeartbeat() {
+    if (!this.audio) return;
+    const { ctx, master } = this.audio;
+    const playThump = (delay) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(75, ctx.currentTime + delay);
+      osc.frequency.exponentialRampToValueAtTime(28, ctx.currentTime + delay + 0.18);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.001, ctx.currentTime + delay);
+      g.gain.linearRampToValueAtTime(0.45, ctx.currentTime + delay + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + 0.22);
+      osc.connect(g).connect(master);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.27);
+    };
+    playThump(0);
+    playThump(0.18);
+  }
+  destroyAudio() {
+    this.stopAmbient();
+    if (this.audio?.ctx) { try { this.audio.ctx.close(); } catch(e) {} }
+    this.audio = null;
+  }
+
   collides(x, z) {
     const r = 0.3;
     for (const c of this.colliders) {
@@ -556,17 +774,26 @@ class HorrorGame {
     if (this.keys['KeyD'] || this.keys['ArrowRight']) strafe = 1;
     const sprint = this.keys['ShiftLeft'] || this.inputs.sprint;
     const speed = sprint ? 4.2 : 2.6;
-    const dx = (strafe * Math.cos(this.player.yaw) + fwd * Math.sin(this.player.yaw)) * speed * dt;
-    const dz = (-strafe * Math.sin(this.player.yaw) + fwd * Math.cos(this.player.yaw)) * speed * dt;
+    const cy = Math.cos(this.player.yaw), sy = Math.sin(this.player.yaw);
+    // Camera-aligned: forward = (-sin, 0, -cos), right = (cos, 0, -sin)
+    const dx = (strafe * cy - fwd * sy) * speed * dt;
+    const dz = (-strafe * sy - fwd * cy) * speed * dt;
     // try X then Z (slide)
     let nx = this.player.pos.x + dx;
     let nz = this.player.pos.z + dz;
     if (!this.collides(nx, this.player.pos.z)) this.player.pos.x = nx;
     if (!this.collides(this.player.pos.x, nz)) this.player.pos.z = nz;
 
-    // Walking bob
+    // Walking bob + footstep audio
     const moving = Math.abs(fwd) > 0.05 || Math.abs(strafe) > 0.05;
-    if (moving) this.player.bobT += dt * (sprint ? 12 : 8);
+    if (moving) {
+      this.player.bobT += dt * (sprint ? 12 : 8);
+      const stepInterval = sprint ? 0.32 : 0.45;
+      this.lastStepT += dt;
+      if (this.lastStepT > stepInterval) { this.playFootstep(); this.lastStepT = 0; }
+    } else {
+      this.lastStepT = 0;
+    }
 
     // Camera
     this.camera.position.set(this.player.pos.x, this.player.pos.y + Math.sin(this.player.bobT) * 0.04, this.player.pos.z);
@@ -591,10 +818,11 @@ class HorrorGame {
       const ex = this.enemy.position.x, ez = this.enemy.position.z;
       const tdx = this.player.pos.x - ex, tdz = this.player.pos.z - ez;
       const dist = Math.hypot(tdx, tdz);
-      const forward = new THREE.Vector3(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw));
-      const toEnemyDir = { x: -tdx / (dist || 1), z: -tdz / (dist || 1) }; // from player to enemy
-      const lookDot = forward.x * toEnemyDir.x + forward.z * toEnemyDir.z;
-      const looking = lookDot > 0.6;
+      const fx = -Math.sin(this.player.yaw), fz = -Math.cos(this.player.yaw);
+      // direction from player to enemy
+      const toEnemyX = -tdx / (dist || 1), toEnemyZ = -tdz / (dist || 1);
+      const lookDot = fx * toEnemyX + fz * toEnemyZ;
+      const looking = lookDot > 0.55;
       if (!looking && dist > 0.5) {
         const speed = 1.6 * dt;
         const nex = ex + (tdx / dist) * speed;
@@ -606,6 +834,13 @@ class HorrorGame {
       this.enemy.rotation.y = Math.atan2(tdx, tdz);
       // Idle bob
       this.enemy.position.y = Math.sin(performance.now() * 0.003) * 0.05;
+
+      // Heartbeat scales with proximity (8m → silent, 1m → urgent)
+      if (dist < 8) {
+        const beatInterval = Math.max(0.45, 0.45 + (dist - 1) * 0.18);
+        this.lastBeatT += dt;
+        if (this.lastBeatT > beatInterval) { this.playHeartbeat(); this.lastBeatT = 0; }
+      }
 
       // Catch
       if (dist < 1.0) this.die();
@@ -622,6 +857,8 @@ class HorrorGame {
 
   die() {
     this.state = STATE_DEAD;
+    this.playLose();
+    this.stopAmbient();
     const overlay = document.querySelector('.horror-end');
     overlay.classList.add('show'); overlay.classList.add('dead');
     overlay.querySelector('.horror-end-title').textContent = '💀 ПОЙМАН';
@@ -629,6 +866,8 @@ class HorrorGame {
   }
   win() {
     this.state = STATE_WIN;
+    this.playWin();
+    this.stopAmbient();
     const overlay = document.querySelector('.horror-end');
     overlay.classList.add('show'); overlay.classList.add('won');
     overlay.querySelector('.horror-end-title').textContent = '★ ВЫЖИЛ ★';
@@ -647,6 +886,7 @@ class HorrorGame {
 
   destroy() {
     cancelAnimationFrame(this.raf);
+    this.destroyAudio();
     document.removeEventListener('keydown', this._kd);
     document.removeEventListener('keyup', this._ku);
     document.removeEventListener('mousemove', this._mm);

@@ -764,12 +764,24 @@ body.ar-on #battle-screen { background: linear-gradient(180deg, rgba(0,0,0,0.55)
   text-shadow: 0 0 4px black;
 }
 .horror-prompt {
-  position: absolute; left: 50%; top: 60%; transform: translateX(-50%);
-  z-index: 10; pointer-events: none; display: none;
-  background: rgba(0,0,0,0.7); border: 1px solid rgba(255,255,255,0.3);
-  color: #fff; padding: 8px 18px; border-radius: 8px;
-  font-weight: 800; font-size: 14px; letter-spacing: 1px;
-  text-shadow: 0 0 8px rgba(0,0,0,0.9);
+  position: absolute; left: 50%; bottom: 30%; transform: translateX(-50%);
+  z-index: 12; pointer-events: none; display: none;
+  background: linear-gradient(135deg, rgba(60,30,30,0.95), rgba(20,5,5,0.95));
+  border: 2px solid #ff6644;
+  color: #ffeeaa; padding: 14px 28px; border-radius: 14px;
+  font-weight: 900; font-size: 16px; letter-spacing: 1.5px;
+  box-shadow: 0 0 28px rgba(255,68,68,0.7), inset 0 1px 0 rgba(255,255,255,0.2);
+  animation: promptPulse 0.9s ease-in-out infinite;
+  text-align: center; text-shadow: 0 0 8px rgba(255,200,100,0.8);
+  white-space: nowrap;
+}
+.horror-prompt::before {
+  content: '↓ ДЕЙСТВИЕ ↓'; display: block; font-size: 11px; font-weight: 900;
+  letter-spacing: 3px; opacity: 0.85; margin-bottom: 6px; color: #ffaa88;
+}
+@keyframes promptPulse {
+  0%, 100% { transform: translateX(-50%) scale(1); box-shadow: 0 0 28px rgba(255,68,68,0.7); }
+  50% { transform: translateX(-50%) scale(1.05); box-shadow: 0 0 42px rgba(255,68,68,1); }
 }
 .horror-status {
   position: absolute; top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left));
@@ -857,6 +869,54 @@ body.ar-on #battle-screen { background: linear-gradient(180deg, rgba(0,0,0,0.55)
   margin-bottom: 24px; opacity: 0.9;
 }
 .horror-end-buttons { display: flex; gap: 12px; }
+
+/* Horror tutorial overlay */
+.horror-tutorial {
+  position: absolute; inset: 0; z-index: 200;
+  display: none; align-items: center; justify-content: center;
+  background: radial-gradient(circle at center, rgba(40,5,5,0.95), rgba(0,0,0,0.99));
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  padding: 20px; overflow-y: auto;
+}
+.horror-tutorial.show { display: flex; animation: tutFadeIn 0.5s; }
+@keyframes tutFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.tut-content {
+  max-width: 420px; width: 100%; text-align: center;
+  background: linear-gradient(160deg, rgba(40,20,20,0.85), rgba(15,5,5,0.85));
+  border: 2px solid rgba(255,77,109,0.6);
+  border-radius: 18px; padding: 24px 22px;
+  box-shadow: 0 0 50px rgba(255,0,68,0.4);
+}
+.tut-title {
+  font-family: 'Bangers', cursive; font-size: 38px; letter-spacing: 3px;
+  color: #ff4444;
+  text-shadow: 0 0 18px #ff0044, 0 0 32px #ff0000, 0 4px 8px black;
+  margin-bottom: 18px;
+  animation: tutTitlePulse 1.8s ease-in-out infinite;
+}
+@keyframes tutTitlePulse {
+  0%, 100% { text-shadow: 0 0 18px #ff0044, 0 0 32px #ff0000, 0 4px 8px black; }
+  50% { text-shadow: 0 0 26px #ff0044, 0 0 48px #ff2200, 0 4px 8px black; }
+}
+.tut-section {
+  background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; padding: 12px; margin-bottom: 12px; text-align: left;
+}
+.tut-row { display: flex; gap: 12px; align-items: flex-start; font-size: 13px; line-height: 1.5; }
+.tut-row .tut-key { font-size: 28px; flex-shrink: 0; }
+.tut-mobile { display: flex; }
+.tut-pc { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  .tut-mobile { display: none; }
+  .tut-pc { display: flex; }
+}
+.tut-goal { font-family: 'Bangers', cursive; font-size: 18px; letter-spacing: 1px; color: #fbbf24; margin-bottom: 4px; }
+.tut-warn { font-family: 'Bangers', cursive; font-size: 18px; letter-spacing: 1px; color: #ff6644; margin-bottom: 4px; }
+.tut-text { font-size: 13px; line-height: 1.5; }
+.tut-text b { color: #ffaa88; }
+.tut-content > .big-btn { margin-top: 8px; width: 100%; }
+
+/* Highlight interactive objects (glow when close) — handled by Three.js, but cursor cue helps */
 
 /* ============== DESKTOP ============== */
 @media (min-width: 900px) {
